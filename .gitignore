@@ -45,3 +45,6 @@
 
 # Rails master key (decrypts credentials.yml.enc)
 /config/master.key
+
+/app/assets/builds/*
+!/app/assets/builds/.keep

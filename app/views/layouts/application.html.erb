@@ -9,9 +9,10 @@
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
 
-    <%# Tailwind CSS (Play CDN — no build step; swap for the tailwindcss-rails
-        gem if you need a compiled/local build). %>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <%# Tailwind CSS, compiled by the tailwindcss-rails gem into
+        app/assets/builds/tailwind.css (rebuilt via `bin/rails tailwindcss:build`
+        and automatically during `assets:precompile`). %>
+    <%= stylesheet_link_tag "tailwind", "data-turbo-track": "reload" %>
 
     <%= yield :head %>
 
