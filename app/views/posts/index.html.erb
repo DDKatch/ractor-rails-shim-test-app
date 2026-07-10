@@ -1,10 +1,23 @@
-<h1>Posts</h1>
-<table>
-  <thead>
-    <tr><th>Title</th><th>Body</th></tr>
-  </thead>
-  <tbody>
-    <%= render @posts %>
-  </tbody>
-</table>
-<%= paginate @posts if respond_to?(:paginate) %>
+<div class="mb-4 flex items-center justify-between">
+  <h1 class="text-2xl font-bold">Posts</h1>
+  <%= link_to "New post", new_post_path,
+              class: "inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-white shadow hover:bg-indigo-700" %>
+</div>
+
+<div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow">
+  <table class="min-w-full divide-y divide-gray-200">
+    <thead class="bg-gray-50">
+      <tr>
+        <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Title</th>
+        <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Body</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-200">
+      <%= render @posts %>
+    </tbody>
+  </table>
+</div>
+
+<div class="mt-4">
+  <%= paginate @posts if respond_to?(:paginate) %>
+</div>

@@ -1,12 +1,9 @@
 <% content_for :title, "Editing post" %>
 
-<h1>Editing post</h1>
+<h1 class="mb-4 text-2xl font-bold">Editing post</h1>
 
 <%= render "form", post: @post %>
 
-<br>
-
-<div>
-  <%= link_to "Show this post", @post %> |
-  <%= link_to "Back to posts", posts_path %>
+<div class="mt-4">
+  <%= link_to "Back to posts", posts_path, class: "text-gray-600 hover:text-indigo-600" %>
 </div>

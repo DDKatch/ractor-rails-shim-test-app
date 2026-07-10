@@ -1,4 +1,6 @@
 <tr>
-  <td><%= link_to post.title, post_path(post) %></td>
-  <td><%= post.body %></td>
+  <td class="px-4 py-2">
+    <%= link_to post.title, post_path(post), class: "text-indigo-600 hover:underline" %>
+  </td>
+  <td class="px-4 py-2 text-gray-600"><%= post.body %></td>
 </tr>

@@ -1,9 +1,10 @@
 <%= form_with(model: post) do |form| %>
   <% if post.errors.any? %>
-    <div style="color: red">
-      <h2><%= pluralize(post.errors.count, "error") %> prohibited this post from being saved:</h2>
-
-      <ul>
+    <div class="mb-4 rounded-md bg-red-50 p-4 text-red-700">
+      <h2 class="font-semibold">
+        <%= pluralize(post.errors.count, "error") %> prohibited this post from being saved:
+      </h2>
+      <ul class="mt-2 list-disc list-inside">
         <% post.errors.each do |error| %>
           <li><%= error.full_message %></li>
         <% end %>
@@ -11,17 +12,21 @@
     </div>
   <% end %>
 
-  <div>
-    <%= form.label :title, style: "display: block" %>
-    <%= form.text_field :title %>
-  </div>
+  <div class="space-y-4">
+    <div>
+      <%= form.label :title, class: "block text-sm font-medium text-gray-700" %>
+      <%= form.text_field :title,
+          class: "mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" %>
+    </div>
 
-  <div>
-    <%= form.label :body, style: "display: block" %>
-    <%= form.textarea :body %>
-  </div>
+    <div>
+      <%= form.label :body, class: "block text-sm font-medium text-gray-700" %>
+      <%= form.textarea :body,
+          class: "mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" %>
+    </div>
 
-  <div>
-    <%= form.submit %>
+    <div>
+      <%= form.submit class: "inline-flex cursor-pointer items-center rounded-md bg-indigo-600 px-4 py-2 text-white shadow hover:bg-indigo-700" %>
+    </div>
   </div>
 <% end %>
