@@ -1,0 +1,18 @@
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: 5
+  host: 127.0.0.1
+  username: dev
+
+development:
+  <<: *default
+  database: full_test_app_dev
+
+test:
+  <<: *default
+  database: full_test_app_test
+
+production:
+  <<: *default
+  database: full_test_app_prod
