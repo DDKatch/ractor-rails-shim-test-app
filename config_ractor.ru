@@ -170,6 +170,37 @@ if mode == :ractor
         end
       RUBY
     end
+
+    # --- Benchmark hook (inert unless BENCHMARK_STATS=1) ---------------------
+    # The frozen, Ractor-shareable app graph lives in the MAIN Ractor. A worker
+    # Ractor's ObjectSpace.each_object only sees its own local heap, so the
+    # graph-wide shareable fraction must be captured HERE (after the freeze),
+    # in the main Ractor, and stashed in a frozen, shareable constant that the
+    # /stats endpoint reads. Also enables GC profiling for gc_time_ms.
+    if ENV["BENCHMARK_STATS"]
+      require "objspace"
+      GC::Profiler.enable
+      s_count = 0
+      s_bytes = 0
+      t_count = 0
+      t_bytes = 0
+      ObjectSpace.each_object do |o|
+        b = ObjectSpace.memsize_of(o)
+        t_count += 1
+        t_bytes += b
+        if Ractor.shareable?(o)
+          s_count += 1
+          s_bytes += b
+        end
+      end
+      BENCH_SHAREABLE = {
+        bytes: s_bytes,
+        fraction: (t_bytes.zero? ? 0.0 : (s_bytes.to_f / t_bytes * 100)).round(2),
+        total_bytes: t_bytes,
+        total_count: t_count,
+        shareable_count: s_count
+      }.freeze
+    end
   end
 
   run app
