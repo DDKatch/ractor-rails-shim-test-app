@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title><%= content_for(:title) || "Full Test App" %></title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+    <%= stylesheet_link_tag "tailwind", "data-turbo-track": "reload" %>
+    <%= stylesheet_link_tag :app %>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      :root { --brand: #6366f1; }
+      body.devise-body {
+        font-family: "Sora", ui-sans-serif, system-ui, sans-serif;
+        background:
+          radial-gradient(1200px 600px at 15% -10%, rgba(99,102,241,0.35), transparent 60%),
+          radial-gradient(900px 500px at 110% 10%, rgba(217,70,239,0.25), transparent 55%),
+          linear-gradient(160deg, #0b1020 0%, #131a35 45%, #1b1140 100%);
+        color: #e5e7eb;
+      }
+      .devise-card {
+        animation: devise-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+      }
+      @keyframes devise-rise {
+        from { opacity: 0; transform: translateY(14px) scale(0.99); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+      }
+    </style>
+  </head>
+  <body class="devise-body min-h-screen">
+    <div class="flex min-h-screen items-center justify-center px-4 py-10">
+      <%= yield %>
+    </div>
+  </body>
+</html>

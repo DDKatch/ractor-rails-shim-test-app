@@ -10,6 +10,7 @@ gem "kino"
 gem "devise"
 gem "kaminari"
 gem "tzinfo-data", platforms: %i[ windows jruby ]
+gem "msgpack", ">= 1.7.0"
 
 group :development, :test do
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"

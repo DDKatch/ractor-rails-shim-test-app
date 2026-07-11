@@ -4,8 +4,13 @@
 </div>
 
 <div class="mt-4 flex gap-3">
-  <%= link_to "Edit", edit_post_path(@post),
-              class: "inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-white shadow hover:bg-indigo-700" %>
+  <% if user_signed_in? %>
+    <%= link_to "Edit", edit_post_path(@post),
+                class: "inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-white shadow hover:bg-indigo-700" %>
+    <%= button_to "Delete", @post, method: :delete,
+                  class: "inline-flex items-center rounded-md border border-red-300 px-4 py-2 text-red-700 hover:bg-red-50",
+                  form: { data: { turbo_confirm: "Delete this post?" } } %>
+  <% end %>
   <%= link_to "Back to posts", posts_path,
               class: "inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50" %>
 </div>
