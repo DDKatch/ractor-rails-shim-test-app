@@ -61,6 +61,17 @@ if mode == :ractor
   Rails.application.config.action_dispatch.show_exceptions = :none
   Rails.application.initialize!
 
+  # The shim deep-freezes the logger (incl. its SimpleFormatter), so the
+  # logging/exception middlewares raise FrozenError while trying to log a worker
+  # exception — masking the real error (and crashing the first request in prod).
+  # Drop them so worker exceptions propagate to kino's error handling. The
+  # shim's WorkerApp already surfaces a 555 + backtrace for unhandled worker
+  # errors; kino logs those itself.
+  Rails.application.config.middleware.delete(ActionDispatch::ShowExceptions) rescue nil
+  Rails.application.config.middleware.delete(ActionDispatch::DebugExceptions) rescue nil
+  Rails.application.config.middleware.delete(Rails::Rack::Logger) rescue nil
+  Rails.application.config.middleware.delete(Rails::Rack::SilenceRequest) rescue nil
+
   # Eager-load ALL app subdirectories so every controller/model is defined (and
   # thus present in AbstractController::Base.descendants) BEFORE the shim builds
   # its view_context_class registry in prepare_for_ractors!. This dummy app's
