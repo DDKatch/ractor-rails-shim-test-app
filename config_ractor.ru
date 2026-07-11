@@ -51,6 +51,7 @@ Rails.application.config.eager_load_threads = 1 if Rails.env.development?
 # real backtrace; otherwise swallow (render 500) to keep workers alive.
 Rails.application.config.action_dispatch.show_exceptions = :none
 Rails.application.initialize!
+
 # Eager-load ALL app subdirectories so every controller/model is defined (and
 # thus present in AbstractController::Base.descendants) BEFORE the shim builds
 # its view_context_class registry in prepare_for_ractors!. This dummy app's
