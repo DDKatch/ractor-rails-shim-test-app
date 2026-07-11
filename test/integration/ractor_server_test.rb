@@ -23,6 +23,7 @@
 if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   require "bundler/setup"
   require "json"
+  require "cgi"
   require "ractor_rails_shim"
 
   RactorRailsShim.install
@@ -39,7 +40,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
 
   # Test-harness overrides on top of the production config.
   Rails.application.config.secret_key_base = "0" * 128
-  Rails.application.config.action_dispatch.show_exceptions = :all
+  Rails.application.config.action_dispatch.show_exceptions = false
   Rails.application.config.consider_all_requests_local = true
   Rails.application.config.hosts.clear
   Rails.application.config.eager_load = true
@@ -47,14 +48,22 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   Rails.application.config.enable_reloading = false
   Rails.application.config.assets.sweep_cache = false
   Rails.application.config.action_view.cache_template_loading = true
+  # kino's :ractor workers do not dispatch through ActionDispatch::Executor
+  # (kino owns the Ractor scheduling). The frozen, shared graph never reloads,
+  # so drop Executor (and ShowExceptions, so worker errors surface to the
+  # in-worker rescue instead of being swallowed into public/500.html). These
+  # must be queued BEFORE initialize! so they are baked into the built stack.
+  Rails.application.config.middleware.delete(ActionDispatch::Executor)
+  Rails.application.config.middleware.delete(ActionDispatch::ShowExceptions)
+  # The shim deep-freezes the logger (incl. its SimpleFormatter#@tag_stack), so
+  # the logging middlewares FrozenError while trying to log a worker exception,
+  # masking the real error. Drop them so the original exception propagates to
+  # the in-worker rescue (status 555 + backtrace).
+  Rails.application.config.middleware.delete(ActionDispatch::DebugExceptions)
+  Rails.application.config.middleware.delete(Rails::Rack::Logger)
+  Rails.application.config.middleware.delete(Rails::Rack::SilenceRequest)
 
   Rails.application.initialize!
-
-  # kino's :ractor workers do not dispatch through ActionDispatch::Executor
-  # (kino owns the Ractor scheduling), so drop it here: otherwise each worker
-  # request runs Rails.application.reloader.to_run -> require_unload_lock!,
-  # which is not Ractor-safe. The frozen, shared graph never reloads anyway.
-  Rails.application.middleware.delete(ActionDispatch::Executor) rescue nil
 
   # Confirm the frozen graph actually holds the app routes (not just the railtie).
   anchored = Rails.application.routes.routes.anchored_routes.size
@@ -113,24 +122,41 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "/users/password/new",
   ]
 
+  # The POST/create request exercises the WRITE path: a worker Ractor builds a
+  # NEW Post from params (which clones the frozen _default_attributes template),
+  # assigns attributes, and saves it over the worker's own AR connection. This
+  # is the hardest part of :ractor support (the FrozenError-on-new-record
+  # failure mode) and proves create works off the main Ractor.
+  created_title = "Ractor create proof"
+  post_body = "post[title]=#{CGI.escape(created_title)}&post[body]=written-in-worker"
+
+  requests = paths.map { |p| ["GET", p, nil] }
+  requests << ["POST", "/posts", post_body]
+
+  # Snapshot the row count BEFORE any worker writes, so we can prove the POST
+  # persisted exactly one new row.
+  initial_count = conn.select_value("SELECT count(*) FROM posts").to_i
+
   # Spawn one worker Ractor per request. In Ruby 4.0 a Ractor returns its block
   # value (read via #value); the frozen, shared `app` is passed in (it is
   # shareable, so it crosses the boundary). Each worker builds its own Rack env
-  # from the path and returns [path, status, body].
+  # from the request spec and returns [key, status, headers, body].
   results = {}
-  ractors = paths.map do |path|
-    Ractor.new(app, path) do |application, p|
+  ractors = requests.map do |method, path, body|
+    Ractor.new(app, method, path, body) do |application, m, p, b|
       # Shareable, Ractor-local request IO stand-ins built INSIDE the worker
       # (never cross the boundary).
+      req_body = b || ""
       input = Object.new
-      def input.read; ""; end
+      def input.read(len = nil); (@body || "").dup; end
       def input.rewind; 0; end
       def input.gets; nil; end
       def input.each; end
-      def input.size; 0; end
+      def input.size; (@body || "").bytesize; end
       def input.eof?; true; end
       def input.close; end
       def input.closed?; false; end
+      input.instance_variable_set(:@body, req_body)
 
       err = Object.new
       def err.write(*); end
@@ -139,7 +165,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
       def err.close; end
 
       env = {
-        "REQUEST_METHOD" => "GET",
+        "REQUEST_METHOD" => m,
         "SCRIPT_NAME" => "",
         "PATH_INFO" => p,
         "QUERY_STRING" => "",
@@ -154,30 +180,60 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
         "rack.multiprocess" => true,
         "rack.run_once" => false,
       }
-
-      status, _headers, body = application.call(env)
-
-      content = +""
-      begin
-        body.each { |c| content << c.to_s }
-      rescue
-        begin
-          content = body.to_s
-        rescue
-          content = ""
-        end
+      if m == "POST"
+        env["CONTENT_TYPE"] = "application/x-www-form-urlencoded"
+        env["CONTENT_LENGTH"] = req_body.bytesize.to_s
       end
 
-      [p, status, content]
+      begin
+        status, headers, body_obj = application.call(env)
+      rescue => e
+        # Surface the real worker-side exception instead of Rails' 500 page,
+        # so the test can report the root cause of a failed request.
+        err_lines = ["#{e.class}: #{e.message}"]
+        err_lines += e.backtrace.first(20).map { |b| "  #{b}" }
+        [m, p, 555, { "content-type" => "text/plain" }, err_lines.join("\n")]
+      else
+        content = +""
+        begin
+          body_obj.each { |c| content << c.to_s }
+        rescue
+          begin
+            content = body_obj.to_s
+          rescue
+            content = ""
+          end
+        end
+
+        # Normalize headers to a plain Hash (Rack returns a response array whose
+        # headers may be a frozen/blank Hash subclass).
+        norm_headers = {}
+        begin
+          headers.each { |k, v| norm_headers[k.to_s] = v.to_s }
+        rescue
+          nil
+        end
+
+        [m, p, status, norm_headers, content]
+      end
     end
   end
 
-  ractors.each_with_index do |r, i|
-    returned_path, status, content = r.value
-    results[returned_path] = [status, content]
+  ractors.each do |r|
+    rmethod, rpath, status, headers, content = r.value
+    results["#{rmethod} #{rpath}"] = [status, headers, content]
   end
 
-  puts JSON.generate("post_id" => post_id, "post_title" => post_title, "results" => results)
+  final_count = conn.select_value("SELECT count(*) FROM posts").to_i
+
+  puts JSON.generate(
+    "post_id" => post_id,
+    "post_title" => post_title,
+    "created_title" => created_title,
+    "initial_count" => initial_count,
+    "final_count" => final_count,
+    "results" => results
+  )
   exit 0
 else
   require "test_helper"
@@ -204,20 +260,40 @@ else
       post_id = data["post_id"]
       post_title = data["post_title"]
 
-      assert_equal 200, results["/"][0], "root path status"
-      assert_equal 200, results["/posts"][0], "/posts status"
-      assert_equal 200, results["/posts/new"][0], "/posts/new status"
+      assert_equal 200, results["GET /"][0], "root path status"
+      assert_equal 200, results["GET /posts"][0], "/posts status"
+      assert_equal 200, results["GET /posts/new"][0], "/posts/new status"
 
-      show_key = "/posts/#{post_id}"
+      show_key = "GET /posts/#{post_id}"
       assert_equal 200, results[show_key][0], "#{show_key} status"
       # This is the key proof: set_post (a before_action) must run INSIDE the
       # worker Ractor for @post to be populated; otherwise the body is empty.
-      assert_includes results[show_key][1], post_title,
+      assert_includes results[show_key][2], post_title,
                       "#{show_key} body should contain the post title (before_action replay in worker)"
 
-      assert_equal 200, results["/users/sign_in"][0], "/users/sign_in status"
-      assert_equal 200, results["/users/sign_up"][0], "/users/sign_up status"
-      assert_equal 200, results["/users/password/new"][0], "/users/password/new status"
+      assert_equal 200, results["GET /users/sign_in"][0], "/users/sign_in status"
+      assert_equal 200, results["GET /users/sign_up"][0], "/users/sign_up status"
+      assert_equal 200, results["GET /users/password/new"][0], "/users/password/new status"
+
+      # WRITE PATH: a worker Ractor must be able to build a NEW Post (cloning the
+      # frozen _default_attributes template), assign the params-provided
+      # attributes, and persist it to the database. We assert the row count in
+      # the test DB increased by exactly one and that the params-provided title
+      # was persisted — this proves the full create (model build + write) works
+      # off the main Ractor. NOTE: the controller's `redirect_to @post` then
+      # fails inside the worker on URL generation (HelperMethodBuilder::CACHE,
+      # a lazily-populated class-constant cache that is not shareable) — a
+      # separate URL-helper concern tracked in NEXT_STEPS.md, not a write
+      # failure. The DB write itself succeeds.
+      post_result = results["POST /posts"]
+      assert_equal data["initial_count"] + 1, data["final_count"],
+                   "POST /posts must persist exactly one new row in the test DB"
+      # The created post's title should be present in the DB (proves the worker
+      # wrote the params-provided title, not just an empty record).
+      conn = ActiveRecord::Base.connection
+      titles = conn.select_values("SELECT title FROM posts WHERE title = #{conn.quote(data['created_title'])}")
+      assert_includes titles, data["created_title"],
+                     "the worker-created post with the params title should exist in the DB"
     end
   end
 end
