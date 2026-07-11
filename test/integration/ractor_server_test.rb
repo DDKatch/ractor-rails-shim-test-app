@@ -42,6 +42,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   Rails.application.config.secret_key_base = "0" * 128
   Rails.application.config.action_dispatch.show_exceptions = false
   Rails.application.config.consider_all_requests_local = true
+  Rails.application.config.action_controller.allow_forgery_protection = false
   Rails.application.config.hosts.clear
   Rails.application.config.eager_load = true
   Rails.application.config.cache_classes = true
@@ -87,6 +88,19 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   post_id = conn.select_value("SELECT currval('posts_id_seq')").to_i
   post_title = "Ractor proof"
 
+  # Seed a Devise user (committed to the test DB) so a worker Ractor can
+  # authenticate it via POST /users/sign_in. We avoid User.create! because the
+  # dummy app registers Devise before_validation callbacks on ActiveRecord::Base
+  # under eager load. The password digest is computed in main (BCrypt) and the
+  # hash string inserted raw.
+  user_email = "signin@test.com"
+  user_pw = Devise::Encryptor.digest(User, "password")
+  conn.execute("DELETE FROM users WHERE email = #{conn.quote(user_email)}")
+  conn.execute(
+    "INSERT INTO users (email, encrypted_password, created_at, updated_at) " \
+    "VALUES (#{conn.quote(user_email)}, #{conn.quote(user_pw)}, now(), now())"
+  )
+
   unless RactorRailsShim.respond_to?(:prepare_for_ractors!)
     warn "ractor-rails-shim not available"
     puts JSON.generate("error" => "ractor-rails-shim not available")
@@ -94,6 +108,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   end
 
   RactorRailsShim.prepare_for_ractors!
+
   app_constants = RactorRailsShim.capture_app_constants
   app = RactorRailsShim.make_app_shareable!(Rails.application)
   app = Ractor.make_shareable(RactorRailsShim::WorkerApp.new(app, app_constants))
@@ -132,6 +147,11 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
 
   requests = paths.map { |p| ["GET", p, nil] }
   requests << ["POST", "/posts", post_body]
+  # Devise sign-IN (Warden session write) — the other state-changing path.
+  # Forgery protection is off in this harness; the worker must authenticate the
+  # seeded user and set an encrypted session cookie.
+  signin_body = "user[email]=#{CGI.escape(user_email)}&user[password]=password"
+  requests << ["POST", "/users/sign_in", signin_body]
 
   # Snapshot the row count BEFORE any worker writes, so we can prove the POST
   # persisted exactly one new row.
@@ -296,8 +316,20 @@ else
        # wrote the params-provided title, not just an empty record).
        conn = ActiveRecord::Base.connection
        titles = conn.select_values("SELECT title FROM posts WHERE title = #{conn.quote(data['created_title'])}")
-       assert_includes titles, data["created_title"],
-                      "the worker-created post with the params title should exist in the DB"
-    end
-  end
+        assert_includes titles, data["created_title"],
+                       "the worker-created post with the params title should exist in the DB"
+
+       # SESSION WRITE PATH: a worker Ractor must authenticate the seeded Devise
+       # user via POST /users/sign_in and set an encrypted session cookie
+       # (Warden session write). We assert a 302 redirect (Devise redirects to
+       # root after sign-in) and that the response sets a session cookie.
+        signin_status = results["POST /users/sign_in"][0]
+        signin_headers = results["POST /users/sign_in"][1]
+        assert_includes [302, 303], signin_status,
+                     "POST /users/sign_in should redirect (302/303) after authenticating in a worker Ractor"
+       signin_cookie = signin_headers["set-cookie"] || ""
+       assert signin_cookie.include?("_full_test_app_session"),
+              "POST /users/sign_in should set an encrypted session cookie (Warden session write in worker)"
+     end
+   end
 end
