@@ -275,25 +275,29 @@ else
       assert_equal 200, results["GET /users/sign_up"][0], "/users/sign_up status"
       assert_equal 200, results["GET /users/password/new"][0], "/users/password/new status"
 
-      # WRITE PATH: a worker Ractor must be able to build a NEW Post (cloning the
-      # frozen _default_attributes template), assign the params-provided
-      # attributes, and persist it to the database. We assert the row count in
-      # the test DB increased by exactly one and that the params-provided title
-      # was persisted — this proves the full create (model build + write) works
-      # off the main Ractor. NOTE: the controller's `redirect_to @post` then
-      # fails inside the worker on URL generation (HelperMethodBuilder::CACHE,
-      # a lazily-populated class-constant cache that is not shareable) — a
-      # separate URL-helper concern tracked in NEXT_STEPS.md, not a write
-      # failure. The DB write itself succeeds.
-      post_result = results["POST /posts"]
-      assert_equal data["initial_count"] + 1, data["final_count"],
-                   "POST /posts must persist exactly one new row in the test DB"
-      # The created post's title should be present in the DB (proves the worker
-      # wrote the params-provided title, not just an empty record).
-      conn = ActiveRecord::Base.connection
-      titles = conn.select_values("SELECT title FROM posts WHERE title = #{conn.quote(data['created_title'])}")
-      assert_includes titles, data["created_title"],
-                     "the worker-created post with the params title should exist in the DB"
+       # WRITE PATH: a worker Ractor must be able to build a NEW Post (cloning the
+       # frozen _default_attributes template), assign the params-provided
+       # attributes, persist it to the database, AND then `redirect_to @post`
+       # (URL generation via HelperMethodBuilder, which the shim reroutes through
+       # per-Ractor IES so the worker builds its own builder). We assert:
+       #   (1) the row count in the test DB increased by exactly one,
+       #   (2) the params-provided title was persisted,
+       #   (3) the controller returned a 302 redirect with a Location header
+       #       (proves the full create + redirect works off the main Ractor).
+       post_status = results["POST /posts"][0]
+       post_headers = results["POST /posts"][1]
+       assert_equal 302, post_status,
+                    "POST /posts should redirect (302) after persisting in a worker Ractor"
+       assert post_headers.key?("location"),
+              "POST /posts redirect should set a Location header (URL generation in worker)"
+       assert_equal data["initial_count"] + 1, data["final_count"],
+                    "POST /posts must persist exactly one new row in the test DB"
+       # The created post's title should be present in the DB (proves the worker
+       # wrote the params-provided title, not just an empty record).
+       conn = ActiveRecord::Base.connection
+       titles = conn.select_values("SELECT title FROM posts WHERE title = #{conn.quote(data['created_title'])}")
+       assert_includes titles, data["created_title"],
+                      "the worker-created post with the params title should exist in the DB"
     end
   end
 end
