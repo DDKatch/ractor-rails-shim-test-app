@@ -43,6 +43,12 @@ if mode == :ractor
   # shared app graph is fully loaded *before* being frozen and made shareable
   # for kino's :ractor workers — autoloading is not Ractor-safe.
   require_relative "config/application"
+  # Install the Ractor-safe URL-helper generation BEFORE routes are drawn
+  # (Rails.application.initialize! draws them). This regenerates the named
+  # route helpers and `_routes`/`_generate_paths_by_default` as compiled `def`
+  # methods and replaces the PATH/UNKNOWN lambdas with shareable Method
+  # objects, so workers can call them without "un-shareable Proc" errors.
+  RactorRailsShim.install_route_helpers_patch if RactorRailsShim.respond_to?(:install_route_helpers_patch)
   Rails.application.config.eager_load = true if Rails.env.development?
   # Disable the Propshaft sweep_cache watcher (mutates the frozen shared
   # LoadPath cache in workers -> FrozenError). Production defaults it to false.
