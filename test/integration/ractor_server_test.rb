@@ -206,7 +206,9 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
         "rack.run_once" => false,
       }
       env["HTTP_COOKIE"] = ck if ck && !ck.empty?
-      if m == "POST"
+      # Parse a request body (with the CSRF token) for any verb that carries
+      # one — not just POST. DELETE /users/sign_out needs it for CSRF validation.
+      if b && !b.empty?
         env["CONTENT_TYPE"] = "application/x-www-form-urlencoded"
         env["CONTENT_LENGTH"] = b.bytesize.to_s
       end
@@ -294,6 +296,25 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "post[title]=forged&post[body]=forged&authenticity_token=not-a-real-token"
   bad_status, bad_headers, bad_body = dispatch(app, "POST", "/posts", bad_body, auth_cookie)
 
+  # 6. SESSION-MUTATING sign-out in a worker Ractor. Devise `sign_out` calls
+  #    `reset_session`, which regenerates the session id. Re-fetch a fresh CSRF
+  #    token for the authed session, then DELETE /users/sign_out. Must 302/303
+  #    and set a NEW encrypted session cookie (proves the session write path +
+  #    CSRF validation on a non-GET, non-POST verb in a worker).
+  so_token = csrf_token_from(dispatch(app, "GET", "/posts/new", nil, auth_cookie)[2])
+  signout_body = "authenticity_token=#{CGI.escape(so_token.to_s)}"
+  so_status, so_headers, so_body =
+    dispatch(app, "DELETE", "/users/sign_out", signout_body, auth_cookie)
+  signout_cookie = session_cookie_from(so_headers["set-cookie"]) || auth_cookie
+
+  # 7. The NEW session cookie from sign-out must have no user: GET /posts/new
+  #    must redirect to sign-in again (proves reset_session actually cleared
+  #    the worker session, not a masked no-op). Note: the OLD cookie still
+  #    authenticates (cookie-store sessions can't be server-invalidated) — so we
+  #    check the fresh post-sign-out cookie instead.
+  dead_status, dead_headers, dead_body =
+    dispatch(app, "GET", "/posts/new", nil, signout_cookie)
+
   # Public GET routes (no auth, no CSRF needed).
   root_status,  root_headers,  root_body  = dispatch(app, "GET", "/", nil, nil)
   posts_status, posts_headers, posts_body = dispatch(app, "GET", "/posts", nil, nil)
@@ -317,6 +338,8 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "POST /users/sign_in" => [si_status, si_headers, si_body],
     "POST /posts (valid token)" => [pc_status, pc_headers, pc_body],
     "POST /posts (bad token)" => [bad_status, bad_headers, bad_body],
+    "DELETE /users/sign_out" => [so_status, so_headers, so_body],
+    "GET /posts/new (signed-out)" => [dead_status, dead_headers, dead_body],
   }
 
   puts JSON.generate(
@@ -422,6 +445,24 @@ else
       # --- CSRF VALIDATION REJECTS a forged token in a worker Ractor -------
       assert_equal 422, results["POST /posts (bad token)"][0],
                    "POST /posts with a bad CSRF token must be rejected (422) in a worker Ractor"
+
+      # --- SESSION-MUTATING sign-out in a worker Ractor -------------------
+      # Devise `sign_out` calls `reset_session` (regenerates the session id) and
+      # needs a valid CSRF token on the DELETE. Proves the session-WRITE path +
+      # CSRF validation on a non-GET/POST verb inside a worker.
+      signout_status = results["DELETE /users/sign_out"][0]
+      signout_headers = results["DELETE /users/sign_out"][1]
+      assert_includes [302, 303], signout_status,
+                   "DELETE /users/sign_out should redirect (302/303) after signing out in a worker Ractor"
+      assert (signout_headers["set-cookie"] || "").include?("_full_test_app_session"),
+             "DELETE /users/sign_out should set a new encrypted session cookie (reset_session in worker)"
+
+      # The OLD auth cookie is now dead: GET /posts/new must redirect to
+      # sign-in again (proves the worker session was actually invalidated).
+      assert_equal 302, results["GET /posts/new (signed-out)"][0],
+                   "after sign-out, the old auth cookie must no longer authenticate (session invalidated in worker)"
+      assert_includes results["GET /posts/new (signed-out)"][1]["location"].to_s, "/users/sign_in",
+                   "after sign-out, GET /posts/new should redirect to sign-in"
       end
     end
 end
