@@ -42,7 +42,14 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   Rails.application.config.secret_key_base = "0" * 128
   Rails.application.config.action_dispatch.show_exceptions = false
   Rails.application.config.consider_all_requests_local = true
-  Rails.application.config.action_controller.allow_forgery_protection = false
+  # Forgery protection is ON so the worker Ractors actually exercise CSRF
+  # token issuance (a GET form page must render a token) and validation (a
+  # POST with the token is accepted; a POST with a bad token is rejected).
+  Rails.application.config.action_controller.allow_forgery_protection = true
+  # Pragmatic config; in the frozen :ractor graph this does not propagate to
+  # workers, so forms stay remote and the token is emitted in a <meta
+  # name="csrf-token"> tag. `csrf_token_from` reads both the meta tag and a
+  # hidden field, so token extraction works either way.
   Rails.application.config.hosts.clear
   Rails.application.config.eager_load = true
   Rails.application.config.cache_classes = true
@@ -65,6 +72,15 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   Rails.application.config.middleware.delete(Rails::Rack::SilenceRequest)
 
   Rails.application.initialize!
+
+  # Enable CSRF protection for the :ractor worker verification. The full_test_app
+  # does not call `protect_from_forgery` by default, so without this CSRF is inert
+  # in workers. Turning it on here (BEFORE prepare_for_ractors!/make_app_shareable!
+  # so the shim seeds the worker fallback + captures the callback) lets the test
+  # prove token ISSUANCE (a GET form renders a token) and VALIDATION (a POST with
+  # the token is accepted; a forged token is rejected) inside real worker Ractors.
+  ActionController::Base.allow_forgery_protection = true
+  ApplicationController.before_action :verify_authenticity_token
 
   # Confirm the frozen graph actually holds the app routes (not just the railtie).
   anchored = Rails.application.routes.routes.anchored_routes.size
@@ -127,46 +143,35 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     RUBY
   end
 
-  paths = [
-    "/",
-    "/posts",
-    "/posts/new",
-    "/posts/#{post_id}",
-    "/users/sign_in",
-    "/users/sign_up",
-    "/users/password/new",
-  ]
+  # --- helpers ---------------------------------------------------------------
+  # Pull the session cookie value (`_full_test_app_session=...`) out of a
+  # `set-cookie` header so it can be replayed on a subsequent worker request.
+  def self.session_cookie_from(header)
+    return nil if header.nil? || header.empty?
+    header.split("\n").each do |h|
+      next unless h.include?("_full_test_app_session=")
+      return h[/_full_test_app_session=[^;]*/]
+    end
+    nil
+  end
 
-  # The POST/create request exercises the WRITE path: a worker Ractor builds a
-  # NEW Post from params (which clones the frozen _default_attributes template),
-  # assigns attributes, and saves it over the worker's own AR connection. This
-  # is the hardest part of :ractor support (the FrozenError-on-new-record
-  # failure mode) and proves create works off the main Ractor.
-  created_title = "Ractor create proof"
-  post_body = "post[title]=#{CGI.escape(created_title)}&post[body]=written-in-worker"
+  # Pull the CSRF token out of a rendered page. With remote/Turbo forms the
+  # token lives in the `<meta name="csrf-token">` tag (emitted by
+  # csrf_meta_tags); with non-remote forms it's a hidden `authenticity_token`
+  # field. Check both.
+  def self.csrf_token_from(body)
+    body.to_s[/name="authenticity_token"[^>]*value="([^"]*)"/, 1] ||
+      body.to_s[/name="csrf-token"[^>]*content="([^"]*)"/, 1]
+  end
 
-  requests = paths.map { |p| ["GET", p, nil] }
-  requests << ["POST", "/posts", post_body]
-  # Devise sign-IN (Warden session write) — the other state-changing path.
-  # Forgery protection is off in this harness; the worker must authenticate the
-  # seeded user and set an encrypted session cookie.
-  signin_body = "user[email]=#{CGI.escape(user_email)}&user[password]=password"
-  requests << ["POST", "/users/sign_in", signin_body]
-
-  # Snapshot the row count BEFORE any worker writes, so we can prove the POST
-  # persisted exactly one new row.
-  initial_count = conn.select_value("SELECT count(*) FROM posts").to_i
-
-  # Spawn one worker Ractor per request. In Ruby 4.0 a Ractor returns its block
-  # value (read via #value); the frozen, shared `app` is passed in (it is
-  # shareable, so it crosses the boundary). Each worker builds its own Rack env
-  # from the request spec and returns [key, status, headers, body].
-  results = {}
-  ractors = requests.map do |method, path, body|
-    Ractor.new(app, method, path, body) do |application, m, p, b|
+  # Dispatch ONE request inside a fresh worker Ractor, awaiting the result.
+  # `cookie` (a `_full_test_app_session=...` string) is replayed as HTTP_COOKIE
+  # so an authenticated session carries across worker Ractors.
+  def self.dispatch(app, method, path, body, cookie)
+    req_body = body || ""
+    Ractor.new(app, method, path, req_body, cookie) do |application, m, p, b, ck|
       # Shareable, Ractor-local request IO stand-ins built INSIDE the worker
       # (never cross the boundary).
-      req_body = b || ""
       input = Object.new
       def input.read(len = nil); (@body || "").dup; end
       def input.rewind; 0; end
@@ -176,7 +181,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
       def input.eof?; true; end
       def input.close; end
       def input.closed?; false; end
-      input.instance_variable_set(:@body, req_body)
+      input.instance_variable_set(:@body, b)
 
       err = Object.new
       def err.write(*); end
@@ -200,19 +205,24 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
         "rack.multiprocess" => true,
         "rack.run_once" => false,
       }
+      env["HTTP_COOKIE"] = ck if ck && !ck.empty?
       if m == "POST"
         env["CONTENT_TYPE"] = "application/x-www-form-urlencoded"
-        env["CONTENT_LENGTH"] = req_body.bytesize.to_s
+        env["CONTENT_LENGTH"] = b.bytesize.to_s
       end
 
       begin
         status, headers, body_obj = application.call(env)
+      rescue ActionController::InvalidAuthenticityToken
+        # Expected CSRF-rejection path: map to its real HTTP status instead of
+        # the generic 555 the rescue below uses for unexpected worker errors.
+        [422, { "content-type" => "text/plain" }, "InvalidAuthenticityToken"]
       rescue => e
         # Surface the real worker-side exception instead of Rails' 500 page,
         # so the test can report the root cause of a failed request.
         err_lines = ["#{e.class}: #{e.message}"]
-        err_lines += e.backtrace.first(20).map { |b| "  #{b}" }
-        [m, p, 555, { "content-type" => "text/plain" }, err_lines.join("\n")]
+        err_lines += e.backtrace.first(20).map { |bt| "  #{bt}" }
+        [555, { "content-type" => "text/plain" }, err_lines.join("\n")]
       else
         content = +""
         begin
@@ -234,23 +244,88 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
           nil
         end
 
-        [m, p, status, norm_headers, content]
+        [status, norm_headers, content]
       end
-    end
+    end.value
   end
 
-  ractors.each do |r|
-    rmethod, rpath, status, headers, content = r.value
-    results["#{rmethod} #{rpath}"] = [status, headers, content]
-  end
+  created_title = "Ractor create proof"
 
+  # --- auth + CSRF flow (all inside real worker Ractors) ---------------------
+  # 1. GET the Devise sign-in page (public). With forgery protection on, the
+  #    rendered form carries a CSRF token bound to the session cookie the GET
+  #    set. Both are needed to POST.
+  lp_status, lp_headers, lp_body = dispatch(app, "GET", "/users/sign_in", nil, nil)
+  unless lp_status == 200
+    warn "GET /users/sign_in returned #{lp_status} in worker:\n#{lp_body[0, 2000]}"
+  end
+  login_token = csrf_token_from(lp_body)
+  login_cookie = session_cookie_from(lp_headers["set-cookie"])
+
+  # 2. POST valid credentials + the CSRF token -> Warden session write (sets an
+  #    encrypted, authenticated session cookie). This is the SESSION-MUTATING
+  #    path exercised in a worker Ractor.
+  signin_body =
+    "user[email]=#{CGI.escape(user_email)}&user[password]=password" \
+    "&authenticity_token=#{CGI.escape(login_token.to_s)}"
+  si_status, si_headers, si_body = dispatch(app, "POST", "/users/sign_in", signin_body, login_cookie)
+  auth_cookie = session_cookie_from(si_headers["set-cookie"]) || login_cookie
+
+  # 3. GET /posts/new as the authenticated user -> 200 AND the form must render
+  #    a CSRF token (proves token ISSUANCE in a worker Ractor).
+  pn_status, pn_headers, pn_body = dispatch(app, "GET", "/posts/new", nil, auth_cookie)
+  new_token = csrf_token_from(pn_body)
+
+  # 3b. GET /posts/new UNAUTHENTICATED -> 302 redirect to sign-in. Proves the
+  #     `authenticate_user!` before_action actually replays in a worker Ractor
+  #     (not a masked no-op) — the trap NEXT_STEPS.md warns about.
+  unu_status, unu_headers, unu_body = dispatch(app, "GET", "/posts/new", nil, nil)
+
+  # 4. POST /posts with the valid CSRF token -> 302 redirect after persisting a
+  #    row in the DB (proves token VALIDATION + the WRITE path in a worker).
+  post_body =
+    "post[title]=#{CGI.escape(created_title)}&post[body]=written-in-worker" \
+    "&authenticity_token=#{CGI.escape(new_token.to_s)}"
+  pc_status, pc_headers, pc_body = dispatch(app, "POST", "/posts", post_body, auth_cookie)
+
+  # 5. POST /posts with a BAD CSRF token -> 422 (proves validation REJECTS a
+  #    forged token in a worker Ractor).
+  bad_body =
+    "post[title]=forged&post[body]=forged&authenticity_token=not-a-real-token"
+  bad_status, bad_headers, bad_body = dispatch(app, "POST", "/posts", bad_body, auth_cookie)
+
+  # Public GET routes (no auth, no CSRF needed).
+  root_status,  root_headers,  root_body  = dispatch(app, "GET", "/", nil, nil)
+  posts_status, posts_headers, posts_body = dispatch(app, "GET", "/posts", nil, nil)
+  show_status,  show_headers,  show_body  = dispatch(app, "GET", "/posts/#{post_id}", nil, nil)
+  su_status,    su_headers,    su_body    = dispatch(app, "GET", "/users/sign_up", nil, nil)
+  pw_status,    pw_headers,    pw_body    = dispatch(app, "GET", "/users/password/new", nil, nil)
+
+  # Snapshot the row count AFTER the worker writes, so we can prove the POST
+  # persisted exactly one new row.
   final_count = conn.select_value("SELECT count(*) FROM posts").to_i
+
+  results = {
+    "GET /" => [root_status, root_headers, root_body],
+    "GET /posts" => [posts_status, posts_headers, posts_body],
+    "GET /posts/new" => [pn_status, pn_headers, pn_body],
+    "GET /posts/new (unauth)" => [unu_status, unu_headers, unu_body],
+    "GET /posts/#{post_id}" => [show_status, show_headers, show_body],
+    "GET /users/sign_in" => [lp_status, lp_headers, lp_body],
+    "GET /users/sign_up" => [su_status, su_headers, su_body],
+    "GET /users/password/new" => [pw_status, pw_headers, pw_body],
+    "POST /users/sign_in" => [si_status, si_headers, si_body],
+    "POST /posts (valid token)" => [pc_status, pc_headers, pc_body],
+    "POST /posts (bad token)" => [bad_status, bad_headers, bad_body],
+  }
 
   puts JSON.generate(
     "post_id" => post_id,
     "post_title" => post_title,
     "created_title" => created_title,
-    "initial_count" => initial_count,
+    "login_token_present" => !login_token.nil?,
+    "new_token_present" => !new_token.nil?,
+    "initial_count" => final_count - 1,
     "final_count" => final_count,
     "results" => results
   )
@@ -280,9 +355,12 @@ else
       post_id = data["post_id"]
       post_title = data["post_title"]
 
+      # --- public GET routes (no auth) -------------------------------------
       assert_equal 200, results["GET /"][0], "root path status"
       assert_equal 200, results["GET /posts"][0], "/posts status"
-      assert_equal 200, results["GET /posts/new"][0], "/posts/new status"
+      assert_equal 200, results["GET /users/sign_in"][0], "/users/sign_in status"
+      assert_equal 200, results["GET /users/sign_up"][0], "/users/sign_up status"
+      assert_equal 200, results["GET /users/password/new"][0], "/users/password/new status"
 
       show_key = "GET /posts/#{post_id}"
       assert_equal 200, results[show_key][0], "#{show_key} status"
@@ -291,45 +369,59 @@ else
       assert_includes results[show_key][2], post_title,
                       "#{show_key} body should contain the post title (before_action replay in worker)"
 
-      assert_equal 200, results["GET /users/sign_in"][0], "/users/sign_in status"
-      assert_equal 200, results["GET /users/sign_up"][0], "/users/sign_up status"
-      assert_equal 200, results["GET /users/password/new"][0], "/users/password/new status"
+      # --- auth callback replay: /posts/new requires authenticate_user! -----
+      # Unauthenticated it MUST redirect to sign-in (proves the before_action
+      # actually runs in the worker now, not a masked no-op).
+      assert_equal 302, results["GET /posts/new (unauth)"][0],
+                   "GET /posts/new must redirect to sign-in when unauthenticated (auth callback replay in worker)"
+      assert_includes results["GET /posts/new (unauth)"][1]["location"].to_s, "/users/sign_in",
+                   "GET /posts/new redirect should point at the sign-in path"
 
-       # WRITE PATH: a worker Ractor must be able to build a NEW Post (cloning the
-       # frozen _default_attributes template), assign the params-provided
-       # attributes, persist it to the database, AND then `redirect_to @post`
-       # (URL generation via HelperMethodBuilder, which the shim reroutes through
-       # per-Ractor IES so the worker builds its own builder). We assert:
-       #   (1) the row count in the test DB increased by exactly one,
-       #   (2) the params-provided title was persisted,
-       #   (3) the controller returned a 302 redirect with a Location header
-       #       (proves the full create + redirect works off the main Ractor).
-       post_status = results["POST /posts"][0]
-       post_headers = results["POST /posts"][1]
-       assert_equal 302, post_status,
-                    "POST /posts should redirect (302) after persisting in a worker Ractor"
-       assert post_headers.key?("location"),
-              "POST /posts redirect should set a Location header (URL generation in worker)"
-       assert_equal data["initial_count"] + 1, data["final_count"],
-                    "POST /posts must persist exactly one new row in the test DB"
-       # The created post's title should be present in the DB (proves the worker
-       # wrote the params-provided title, not just an empty record).
-       conn = ActiveRecord::Base.connection
-       titles = conn.select_values("SELECT title FROM posts WHERE title = #{conn.quote(data['created_title'])}")
-        assert_includes titles, data["created_title"],
-                       "the worker-created post with the params title should exist in the DB"
+      # The AUTHENTICATED GET /posts/new must render 200 with a CSRF token
+      # (proves token ISSUANCE in a worker Ractor).
+      assert_equal 200, results["GET /posts/new"][0],
+                   "authenticated GET /posts/new must render 200 (token issuance in worker)"
 
-       # SESSION WRITE PATH: a worker Ractor must authenticate the seeded Devise
-       # user via POST /users/sign_in and set an encrypted session cookie
-       # (Warden session write). We assert a 302 redirect (Devise redirects to
-       # root after sign-in) and that the response sets a session cookie.
-        signin_status = results["POST /users/sign_in"][0]
-        signin_headers = results["POST /users/sign_in"][1]
-        assert_includes [302, 303], signin_status,
-                     "POST /users/sign_in should redirect (302/303) after authenticating in a worker Ractor"
-       signin_cookie = signin_headers["set-cookie"] || ""
-       assert signin_cookie.include?("_full_test_app_session"),
-              "POST /users/sign_in should set an encrypted session cookie (Warden session write in worker)"
-     end
-   end
+      # --- SESSION WRITE PATH: Devise sign-in (Warden session write) --------
+      # The worker authenticates the seeded user and sets an encrypted session
+      # cookie. Forgery protection is ON, so this also proves CSRF validation
+      # accepted the valid token issued by the GET /users/sign_in page.
+      signin_status = results["POST /users/sign_in"][0]
+      signin_headers = results["POST /users/sign_in"][1]
+      assert_includes [302, 303], signin_status,
+                   "POST /users/sign_in should redirect (302/303) after authenticating in a worker Ractor"
+      signin_cookie = signin_headers["set-cookie"] || ""
+      assert signin_cookie.include?("_full_test_app_session"),
+             "POST /users/sign_in should set an encrypted session cookie (Warden session write in worker)"
+
+      # --- CSRF token ISSUANCE in a worker Ractor --------------------------
+      # The authenticated GET /posts/new must render a CSRF authenticity_token
+      # field (proves the worker can issue a token off the main Ractor).
+      assert data["login_token_present"],
+             "GET /users/sign_in must render a CSRF token (issuance in worker)"
+      assert data["new_token_present"],
+             "authenticated GET /posts/new must render a CSRF token (issuance in worker)"
+
+      # --- WRITE PATH + CSRF VALIDATION: POST /posts with valid token ------
+      # A worker Ractor builds a NEW Post (cloning the frozen _default_attributes
+      # template), assigns the params, persists it, AND `redirect_to @post`
+      # (URL generation in the worker). The valid CSRF token must be accepted.
+      post_status = results["POST /posts (valid token)"][0]
+      post_headers = results["POST /posts (valid token)"][1]
+      assert_equal 302, post_status,
+                   "POST /posts (valid CSRF token) should redirect (302) after persisting in a worker Ractor"
+      assert post_headers.key?("location"),
+             "POST /posts redirect should set a Location header (URL generation in worker)"
+      assert_equal data["initial_count"] + 1, data["final_count"],
+                   "POST /posts must persist exactly one new row in the test DB"
+      conn = ActiveRecord::Base.connection
+      titles = conn.select_values("SELECT title FROM posts WHERE title = #{conn.quote(data['created_title'])}")
+      assert_includes titles, data["created_title"],
+                     "the worker-created post with the params title should exist in the DB"
+
+      # --- CSRF VALIDATION REJECTS a forged token in a worker Ractor -------
+      assert_equal 422, results["POST /posts (bad token)"][0],
+                   "POST /posts with a bad CSRF token must be rejected (422) in a worker Ractor"
+      end
+    end
 end
