@@ -36,6 +36,9 @@
 *.swp
 *~
 
+# Ignore agent/tool cache directories.
+.serena/
+
 # Ignore Ruby LSP cache.
 /.ruby-lsp/
 
