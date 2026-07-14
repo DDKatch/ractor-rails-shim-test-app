@@ -125,7 +125,8 @@ export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 cargo build --release
 # Replace the gem's compiled extension with the patched one and re-sign
 # (macOS kills an ad-hoc-mismatched load with SIGKILL). The exact dylib path
-# and the `codesign --force --sign -` step are in NEXT_STEPS.md:
+# and the `codesign --force --sign -` step are documented in the published
+# kino fork's build notes (see the DDKatch/kino link above).
 cp target/release/libkino.dylib <kino-gem>/lib/kino/kino.bundle
 codesign --force --sign - <kino-gem>/lib/kino/kino.bundle
 ```
@@ -160,7 +161,7 @@ are not loaded by Rails and are not required to run the app or benchmarks.
 | File | Purpose |
 |------|---------|
 | `kino.rb` | kino server configuration (worker/thread counts). Passed to kino via `-C kino.rb` from `config_ractor.ru`. Not a Rails file. |
-| `verify_blockers.rb` | Boots the app in `:ractor` mode and checks key endpoints (`/up` → 200, `Post.count`, Devise routes) as a quick smoke test that the shim works outside the test framework. Referenced from `NEXT_STEPS.md`. |
+| `verify_blockers.rb` | Boots the app in `:ractor` mode and checks key endpoints (`/up` → 200, `Post.count`, Devise routes) as a quick smoke test that the shim works outside the test framework.
 | `load_root.rb` | Deliberate **load-test reproducer**. Hits a *running* server's `/` with configurable concurrency/duration to reproduce racor-worker connection errors the in-process Minitest cannot. Run against a live server (e.g. `kino -m ractor`); usage is printed in the file. |
 | `bench/repro.rb` | Deliberate **sustained-crash reproducer**. Signs in once, then hammers `POST /posts` with `ab` until a worker Bus Error appears, isolating the class #2 frozen-iseq crash. Lives in `bench/` alongside the main harness. |
 
