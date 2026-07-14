@@ -89,8 +89,8 @@ footprint. It seeds the benchmark user itself.
 **Prerequisites**
 
 - patched `kino` installed (see *kino patch*),
-- PostgreSQL running and the **test** DB present (`full_test_app_test`) — the
-  harness sets `DATABASE_URL` to it,
+- PostgreSQL running and the **test** DB present (see `config/database.yml`) — the
+  harness points `DATABASE_URL` at it,
 - macOS: `export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES`.
 
 **Run:**
