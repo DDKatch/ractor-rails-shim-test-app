@@ -1,0 +1,10 @@
+# Keep the test/system directory so Run options: --seed 25017
+
+# Running:
+
+
+
+Finished in 0.000229s, 0.0000 runs/s, 0.0000 assertions/s.
+0 runs, 0 assertions, 0 failures, 0 errors, 0 skips (CI system-test job)
+# resolves without a LoadError. This app has no browser-based system tests;
+# Ractor/web-server behavior is covered by test/integration/ractor_server_test.rb.
