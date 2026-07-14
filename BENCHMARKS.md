@@ -39,24 +39,9 @@ cd ractor-rails-shim-test-app && ruby bench/bench.rb
 | puma clustered (-w5 -t5) | B (5×5) | 13,963 | 3,287 | 2,131 | 928 | 793 |
 | **falcon hybrid (-n5 --threads 5)** | B (5×5) | **14,271** | **3,528** | **2,246** | 964 | 784 |
 
-‡ **kino `:threaded` boot 500 — ROOT-CAUSED + FIXED.** kino `:threaded` (single
-process, plain threads — Puma/Falcon-threaded equivalent) booted but returned
-500 on every request with `NoMethodError: undefined method
-'require_unload_lock!' for an instance of #<Class:…>` from `railties
-finisher.rb:174`. The reloader callbacks ran on the bare
-`ActiveSupport::Reloader` **class object**, and Devise then broke too. **Root
-cause:** the shim's `RactorRailsShim.install` (called unconditionally from
-`config/boot.rb`) keyed its install scope off `ENV["SERVER"]` (minimal install
-for `puma|falcon|thin|webrick|thread`; full Ractor-oriented install otherwise).
-kino sets no `SERVER` env, so it got the full install even in `:threaded` mode —
-whose ractor-specific patches corrupt the reloader + Devise under plain threads.
-**Fix:** the benchmark now passes `SERVER=thread` for the `kino :threaded`
-scenario (minimal shim install — same as Puma/Falcon), so the reloader and
-Devise work and the write path is **stable**. kino `:ractor` keeps the full
-install (no `SERVER` set). kino `:threaded` is now a valid single-process
-baseline, ~comparable to puma single on `/up` (4,397 rps at −t5), with a fully
-working Devise write path — unlike `:ractor`, which hits the frozen-iseq class
-#2 crash under sustained writes.
+‡ **kino `:threaded` is a valid single-process baseline** — the shim passes
+`SERVER=thread` for this scenario (minimal install, same as Puma/Falcon), so the
+reloader and Devise work and the write path is **stable** (`817` rps).
 
 † **kino `:ractor` reads are stable; writes are UNSTABLE under sustained load.**
 This 2026-07-13 re-run at `-w5` (patched kino, `RUBY_GC_DISABLE_COMPACTION=1`,
