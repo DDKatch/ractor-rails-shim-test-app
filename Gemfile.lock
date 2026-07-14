@@ -1,5 +1,5 @@
 PATH
-  remote: /Users/dev/My_Space/Workspace/Current_Projects/Ruby_4_Ractors_Web_Server/ractor-rails-shim
+  remote: ../ractor-rails-shim
   specs:
     ractor-rails-shim (0.2.0)
       activesupport (>= 7.0)
