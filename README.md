@@ -8,8 +8,9 @@ sign-in/sign-out, CSRF issuance + validation, and DB-backed writes) from real
 worker Ractors.
 
 This repo is the "does it actually work end-to-end" companion to the shim in
-`../ractor-rails-shim`. See that project's `README.md` and `NEXT_STEPS.md` for
-the blocker map, the kino source patch, and the full benchmark analysis.
+`../ractor-rails-shim`. See that project's `README.md` for the blocker map and
+the kino source patch, and [`BENCHMARKS.md`](./BENCHMARKS.md) for the full
+kino `:ractor` vs Puma vs Falcon benchmark analysis.
 
 ## Requirements
 
