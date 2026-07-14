@@ -1,4 +1,4 @@
-# full_test_app
+# ractor-rails-shim-test-app
 
 The reference Rails application used to validate **`ractor-rails-shim`** running
 inside **`kino -m ractor`** (Ruby 4.0 Ractor-mode web server). It is a standard
@@ -94,7 +94,7 @@ footprint. It seeds the benchmark user itself.
 **Run:**
 
 ```sh
-cd full_test_app
+cd ractor-rails-shim-test-app
 BENCH_DURATION=20 BENCH_CONCURRENCY=64 BENCH_RUNS=3 ruby bench/bench.rb
 # or just:  ruby bench/bench.rb
 ```

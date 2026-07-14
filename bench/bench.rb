@@ -6,7 +6,7 @@ require "net/http"
 require "socket"
 # Benchmark harness: compare kino :ractor vs Puma vs Falcon.
 #
-# For each server it boots the full_test_app, warms up, then runs `ab`
+# For each server it boots the ractor-rails-shim-test-app, warms up, then runs `ab`
 # (ApacheBench) against three endpoints:
 #   /up            GET, no DB        (server/dispatch overhead)
 #   /posts         GET, DB + render  (realistic read path)
@@ -26,7 +26,7 @@ require "socket"
 # Metrics per (server, endpoint): requests/sec, p50/p95/p99 latency (ms),
 # and steady-state RSS (KB) of the server process tree.
 #
-# Run from full_test_app/:  ruby bench/bench.rb
+# Run from ractor-rails-shim-test-app/:  ruby bench/bench.rb
 
 require "open3"
 require "cgi"

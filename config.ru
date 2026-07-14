@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# Puma / Falcon (thread-server) boot for full_test_app.
+# Puma / Falcon (thread-server) boot for ractor-rails-shim-test-app.
 #
 # This file boots the app under a normal multi-threaded Rack server instead of
 # kino's Ractor mode. It selects the ractor-rails-shim's THREAD mode via the

@@ -68,7 +68,7 @@ if mode == :ractor
   Rails.application.initialize!
 
   # --- CSRF forgery protection (baked into the frozen :ractor graph) --------
-  # The full_test_app does not call `protect_from_forgery` by default, so
+  # The ractor-rails-shim-test-app does not call `protect_from_forgery` by default, so
   # `protect_against_forgery?` is false and worker Ractors never issue a CSRF
   # token (no hidden field, no <meta name="csrf-token">). We turn it on here,
   # AFTER initialize! but BEFORE prepare_for_ractors!/make_app_shareable!, so

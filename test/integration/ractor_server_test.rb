@@ -73,7 +73,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
 
   Rails.application.initialize!
 
-  # Enable CSRF protection for the :ractor worker verification. The full_test_app
+  # Enable CSRF protection for the :ractor worker verification. The ractor-rails-shim-test-app
   # does not call `protect_from_forgery` by default, so without this CSRF is inert
   # in workers. Turning it on here (BEFORE prepare_for_ractors!/make_app_shareable!
   # so the shim seeds the worker fallback + captures the callback) lets the test
