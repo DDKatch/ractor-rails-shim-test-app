@@ -1,0 +1,215 @@
+{
+  "config": {
+    "date": "2026-07-13 13:55:12",
+    "ruby": "4.0.5",
+    "rails": "n/a",
+    "ab": "n/a",
+    "concurrency": 64,
+    "duration": 15,
+    "warmup": 5,
+    "runs": 3,
+    "cores": 12,
+    "seed_email": "signin@test.com"
+  },
+  "results": [
+    {
+      "scenario": "kino :ractor (-w12)",
+      "framing": "A+B",
+      "mem_cold": {
+        "rss": 211056,
+        "unique": 190840832
+      },
+      "mem_peak": {
+        "rss": 234000,
+        "unique": 226492416
+      },
+      "up": {
+        "rps": 1119.38,
+        "failed": 0,
+        "p50": 57.0,
+        "p95": 63.0,
+        "p99": 67.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 119.0,
+        "failed": 0,
+        "p50": 515.0,
+        "p95": 567.0,
+        "p99": 588.0,
+        "runs": 3
+      },
+      "post": {
+        "rps": 1253.91,
+        "failed": 11720,
+        "p50": 40.0,
+        "p95": 81.0,
+        "p99": 87.0,
+        "runs": 3
+      },
+      "errors": {
+        "post": "POST transport failures: 11720 (recorded, not aborted)"
+      }
+    },
+    {
+      "scenario": "puma single (-w0 -t12)",
+      "framing": "A",
+      "mem_cold": {
+        "rss": 156512,
+        "unique": 128974848
+      },
+      "mem_peak": {
+        "rss": 195536,
+        "unique": 165675008
+      },
+      "up": {
+        "rps": 4064.24,
+        "failed": 0,
+        "p50": 15.0,
+        "p95": 20.0,
+        "p99": 24.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 1193.19,
+        "failed": 0,
+        "p50": 52.0,
+        "p95": 66.0,
+        "p99": 76.0,
+        "runs": 3
+      },
+      "post": {
+        "rps": 813.78,
+        "failed": 0,
+        "p50": 77.0,
+        "p95": 92.0,
+        "p99": 108.0,
+        "runs": 3
+      },
+      "errors": {}
+    },
+    {
+      "scenario": "puma clustered (-w12)",
+      "framing": "B",
+      "mem_cold": {
+        "rss": 1666864,
+        "unique": 1516240896
+      },
+      "mem_peak": {
+        "rss": 1934256,
+        "unique": 1755316224
+      },
+      "up": {
+        "rps": 22171.61,
+        "failed": 0,
+        "p50": 3.0,
+        "p95": 6.0,
+        "p99": 10.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 4752.61,
+        "failed": 0,
+        "p50": 13.0,
+        "p95": 22.0,
+        "p99": 33.0,
+        "runs": 3
+      },
+      "post": {
+        "rps": 2400.51,
+        "failed": 0,
+        "p50": 25.0,
+        "p95": 51.0,
+        "p99": 60.0,
+        "runs": 3
+      },
+      "errors": {}
+    },
+    {
+      "scenario": "falcon threaded",
+      "framing": "A",
+      "mem_cold": null,
+      "mem_peak": null,
+      "up": null,
+      "posts": null,
+      "post": null,
+      "errors": {
+        "scenario": "RuntimeError: server on :3400 not ready after 25s"
+      }
+    },
+    {
+      "scenario": "falcon forked (-n12)",
+      "framing": "B",
+      "mem_cold": {
+        "rss": 1697632,
+        "unique": 1566572544
+      },
+      "mem_peak": {
+        "rss": 1812944,
+        "unique": 1824522240
+      },
+      "up": {
+        "rps": 26199.19,
+        "failed": 0,
+        "p50": 2.0,
+        "p95": 5.0,
+        "p99": 9.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 4931.03,
+        "failed": 0,
+        "p50": 8.0,
+        "p95": 38.0,
+        "p99": 60.0,
+        "runs": 3
+      },
+      "post": {
+        "rps": 3367.75,
+        "failed": 0,
+        "p50": 15.0,
+        "p95": 45.0,
+        "p99": 72.0,
+        "runs": 3
+      },
+      "errors": {}
+    },
+    {
+      "scenario": "falcon async (-n1)",
+      "framing": "A",
+      "mem_cold": {
+        "rss": 202880,
+        "unique": 167772160
+      },
+      "mem_peak": {
+        "rss": 224480,
+        "unique": 217055232
+      },
+      "up": {
+        "rps": 4901.04,
+        "failed": 0,
+        "p50": 13.0,
+        "p95": 15.0,
+        "p99": 16.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 1271.57,
+        "failed": 0,
+        "p50": 48.0,
+        "p95": 71.0,
+        "p99": 82.0,
+        "runs": 3
+      },
+      "post": {
+        "rps": 849.19,
+        "failed": 0,
+        "p50": 73.0,
+        "p95": 81.0,
+        "p99": 88.0,
+        "runs": 3
+      },
+      "errors": {}
+    }
+  ]
+}

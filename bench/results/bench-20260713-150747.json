@@ -1,0 +1,65 @@
+{
+  "config": {
+    "date": "2026-07-13 15:07:47",
+    "ruby": "4.0.5",
+    "rails": "n/a",
+    "ab": "n/a",
+    "concurrency": 64,
+    "duration": 10,
+    "warmup": 3,
+    "runs": 2,
+    "cores": 12,
+    "seed_email": "signin@test.com"
+  },
+  "results": [
+    {
+      "scenario": "kino :threaded (single-process)",
+      "framing": "A",
+      "mem_cold": {
+        "rss": 158016,
+        "unique": 136314880
+      },
+      "mem_peak": {
+        "rss": 193168,
+        "unique": 180355072
+      },
+      "up": {
+        "rps": 4314.285,
+        "failed": 0,
+        "p50": 15.0,
+        "p95": 16.5,
+        "p99": 18.0,
+        "runs": 2
+      },
+      "posts": {
+        "rps": 1122.29,
+        "failed": 0,
+        "p50": 53.5,
+        "p95": 75.5,
+        "p99": 83.5,
+        "runs": 2
+      },
+      "post": {
+        "rps": 753.9749999999999,
+        "failed": 0,
+        "p50": 78.5,
+        "p95": 104.5,
+        "p99": 118.0,
+        "runs": 2
+      },
+      "errors": {}
+    },
+    {
+      "scenario": "falcon threaded",
+      "framing": "A",
+      "mem_cold": null,
+      "mem_peak": null,
+      "up": null,
+      "posts": null,
+      "post": null,
+      "errors": {
+        "scenario": "RuntimeError: server on :3230 not ready after 25s"
+      }
+    }
+  ]
+}

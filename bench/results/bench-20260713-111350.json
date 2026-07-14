@@ -1,0 +1,53 @@
+{
+  "config": {
+    "date": "2026-07-13 11:13:50",
+    "ruby": "4.0.5",
+    "rails": "n/a",
+    "ab": "n/a",
+    "concurrency": 64,
+    "duration": 8,
+    "warmup": 3,
+    "runs": 1,
+    "cores": 12,
+    "seed_email": "signin@test.com"
+  },
+  "results": [
+    {
+      "scenario": "kino :ractor (-w12)",
+      "framing": "A+B",
+      "mem_cold": {
+        "rss": 201008,
+        "unique": 180355072
+      },
+      "mem_peak": {
+        "rss": 243680,
+        "unique": 210763776
+      },
+      "up": {
+        "rps": 1128.33,
+        "failed": 0,
+        "p50": 56.0,
+        "p95": 61.0,
+        "p99": 64.0,
+        "runs": 1
+      },
+      "posts": {
+        "rps": 185.18,
+        "failed": 0,
+        "p50": 323.0,
+        "p95": 485.0,
+        "p99": 699.0,
+        "runs": 1
+      },
+      "post": {
+        "rps": 773.17,
+        "failed": 0,
+        "p50": 76.0,
+        "p95": 93.0,
+        "p99": 392.0,
+        "runs": 1
+      },
+      "errors": {}
+    }
+  ]
+}

@@ -1,0 +1,282 @@
+{
+  "config": {
+    "date": "2026-07-13 15:30:26",
+    "ruby": "4.0.5",
+    "rails": "n/a",
+    "ab": "n/a",
+    "concurrency": 64,
+    "duration": 15,
+    "warmup": 5,
+    "runs": 3,
+    "cores": 12,
+    "seed_email": "signin@test.com"
+  },
+  "results": [
+    {
+      "scenario": "kino :ractor (-w5)",
+      "framing": "A+B",
+      "mem_cold": {
+        "rss": 181088,
+        "unique": 156237824
+      },
+      "mem_peak": {
+        "rss": 192272,
+        "unique": 161480704
+      },
+      "up": {
+        "rps": 2635.58,
+        "failed": 0,
+        "p50": 24.0,
+        "p95": 26.0,
+        "p99": 29.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 604.4,
+        "failed": 0,
+        "p50": 103.0,
+        "p95": 123.0,
+        "p99": 138.0,
+        "runs": 3
+      },
+      "post": null,
+      "errors": {
+        "post": "RuntimeError: POST /posts did not succeed: code=500 location=nil"
+      }
+    },
+    {
+      "scenario": "kino :ractor (-w1)",
+      "framing": "A",
+      "mem_cold": {
+        "rss": 172928,
+        "unique": 142606336
+      },
+      "mem_peak": {
+        "rss": 204096,
+        "unique": 168820736
+      },
+      "up": {
+        "rps": 3951.77,
+        "failed": 0,
+        "p50": 16.0,
+        "p95": 17.0,
+        "p99": 18.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 522.19,
+        "failed": 0,
+        "p50": 120.0,
+        "p95": 147.0,
+        "p99": 156.0,
+        "runs": 3
+      },
+      "post": {
+        "rps": 367.0,
+        "failed": 0,
+        "p50": 181.0,
+        "p95": 205.0,
+        "p99": 213.0,
+        "runs": 3
+      },
+      "errors": {}
+    },
+    {
+      "scenario": "kino :threaded (single-process)",
+      "framing": "A",
+      "mem_cold": {
+        "rss": 163664,
+        "unique": 141557760
+      },
+      "mem_peak": {
+        "rss": 222464,
+        "unique": 189792256
+      },
+      "up": {
+        "rps": 4433.72,
+        "failed": 0,
+        "p50": 14.0,
+        "p95": 16.0,
+        "p99": 17.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 619.38,
+        "failed": 0,
+        "p50": 98.0,
+        "p95": 122.0,
+        "p99": 128.0,
+        "runs": 3
+      },
+      "post": {
+        "rps": 824.57,
+        "failed": 0,
+        "p50": 75.0,
+        "p95": 100.0,
+        "p99": 102.0,
+        "runs": 3
+      },
+      "errors": {}
+    },
+    {
+      "scenario": "puma single (-w0 -t5)",
+      "framing": "A",
+      "mem_cold": {
+        "rss": 156928,
+        "unique": 125829120
+      },
+      "mem_peak": {
+        "rss": 176816,
+        "unique": 161480704
+      },
+      "up": {
+        "rps": 4293.78,
+        "failed": 0,
+        "p50": 15.0,
+        "p95": 16.0,
+        "p99": 18.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 1259.32,
+        "failed": 0,
+        "p50": 50.0,
+        "p95": 61.0,
+        "p99": 72.0,
+        "runs": 3
+      },
+      "post": {
+        "rps": 846.86,
+        "failed": 0,
+        "p50": 74.0,
+        "p95": 83.0,
+        "p99": 97.0,
+        "runs": 3
+      },
+      "errors": {}
+    },
+    {
+      "scenario": "puma clustered (-w5)",
+      "framing": "B",
+      "mem_cold": {
+        "rss": 752608,
+        "unique": 666894336
+      },
+      "mem_peak": {
+        "rss": 865136,
+        "unique": 817889280
+      },
+      "up": {
+        "rps": 16289.94,
+        "failed": 0,
+        "p50": 4.0,
+        "p95": 5.0,
+        "p99": 6.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 3340.49,
+        "failed": 0,
+        "p50": 18.0,
+        "p95": 22.0,
+        "p99": 40.0,
+        "runs": 3
+      },
+      "post": {
+        "rps": 1867.4,
+        "failed": 0,
+        "p50": 32.0,
+        "p95": 48.0,
+        "p99": 66.0,
+        "runs": 3
+      },
+      "errors": {}
+    },
+    {
+      "scenario": "falcon forked (-n5)",
+      "framing": "B",
+      "mem_cold": {
+        "rss": 802224,
+        "unique": 691011584
+      },
+      "mem_peak": {
+        "rss": 887648,
+        "unique": 825229312
+      },
+      "up": {
+        "rps": 22749.87,
+        "failed": 0,
+        "p50": 3.0,
+        "p95": 4.0,
+        "p99": 5.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 5358.11,
+        "failed": 0,
+        "p50": 12.0,
+        "p95": 19.0,
+        "p99": 26.0,
+        "runs": 3
+      },
+      "post": {
+        "rps": 3358.38,
+        "failed": 0,
+        "p50": 18.0,
+        "p95": 30.0,
+        "p99": 34.0,
+        "runs": 3
+      },
+      "errors": {}
+    },
+    {
+      "scenario": "falcon async (-n1)",
+      "framing": "A",
+      "mem_cold": {
+        "rss": 203856,
+        "unique": 168820736
+      },
+      "mem_peak": {
+        "rss": 223984,
+        "unique": 212860928
+      },
+      "up": {
+        "rps": 5058.63,
+        "failed": 0,
+        "p50": 12.0,
+        "p95": 15.0,
+        "p99": 15.0,
+        "runs": 3
+      },
+      "posts": {
+        "rps": 1160.55,
+        "failed": 0,
+        "p50": 53.0,
+        "p95": 77.0,
+        "p99": 81.0,
+        "runs": 3
+      },
+      "post": {
+        "rps": 899.74,
+        "failed": 0,
+        "p50": 70.0,
+        "p95": 76.0,
+        "p99": 82.0,
+        "runs": 3
+      },
+      "errors": {}
+    },
+    {
+      "scenario": "falcon threaded",
+      "framing": "A",
+      "mem_cold": null,
+      "mem_peak": null,
+      "up": null,
+      "posts": null,
+      "post": null,
+      "errors": {
+        "scenario": "RuntimeError: server on :3230 not ready after 25s"
+      }
+    }
+  ]
+}
