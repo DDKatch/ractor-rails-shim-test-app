@@ -120,7 +120,7 @@ per-ractor `thread_local!`. Build the patched kino from source:
 git clone https://github.com/<your-fork>/kino   # fork of yaroslav/kino @ 0.1.3
 cd kino-src
 asdf local rust 1.85.0            # edition2024 deps need ≥ 1.85
-export LIBCLANG_PATH=/opt/homebrew/opt/llvm/lib
+export LIBCLANG_PATH="$(brew --prefix llvm)/lib"   # macOS: Homebrew LLVM lib path
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
 cargo build --release
 # Replace the gem's compiled extension with the patched one and re-sign
