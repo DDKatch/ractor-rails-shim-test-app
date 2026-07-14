@@ -7,10 +7,11 @@ exercises the full request path (view rendering, authenticated Devise
 sign-in/sign-out, CSRF issuance + validation, and DB-backed writes) from real
 worker Ractors.
 
-This repo is the "does it actually work end-to-end" companion to the shim in
-`../ractor-rails-shim`. See that project's `README.md` for the blocker map and
-the kino source patch, and [`BENCHMARKS.md`](./BENCHMARKS.md) for the full
-kino `:ractor` vs Puma vs Falcon benchmark analysis.
+This repo is the "does it actually work end-to-end" companion to the shim
+[ractor-rails-shim](https://github.com/DDKatch/ractor-rails-shim). See that
+project's `README.md` for the blocker map and the kino source patch, and
+[`BENCHMARKS.md`](./BENCHMARKS.md) for the full kino `:ractor` vs Puma vs
+Falcon benchmark analysis.
 
 ## Requirements
 
@@ -129,15 +130,18 @@ cp target/release/libkino.dylib <kino-gem>/lib/kino/kino.bundle
 codesign --force --sign - <kino-gem>/lib/kino/kino.bundle
 ```
 
-See `../ractor-rails-shim/NEXT_STEPS.md` → *"How to build/patch kino from
-source"* for the exact paths and the `RUBY_GC_DISABLE_COMPACTION=1` note. The
-patched source lives in the published kino fork, not in this repo.
+See the published kino fork
+[DDKatch/kino](https://github.com/DDKatch/kino) (`ractor-per-ractor-env-cache`
+branch) → *"How to build/patch kino from source"* for the exact paths and the
+`RUBY_GC_DISABLE_COMPACTION=1` note. The patched source lives in the published
+kino fork, not in this repo.
 
 ## Automated verification
 
 ```sh
-# Shim unit specs (no Rails):
-cd ../ractor-rails-shim && bundle exec rake spec
+# Shim unit specs (no Rails) — clone the shim repo
+# (https://github.com/DDKatch/ractor-rails-shim) and run from its directory:
+bundle exec rake spec
 
 # Full Rails suite:
 bin/rails test
