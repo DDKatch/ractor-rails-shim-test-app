@@ -67,6 +67,19 @@ if mode == :ractor
   Rails.application.config.action_dispatch.show_exceptions = :none
   Rails.application.initialize!
 
+  # --- CSRF forgery protection (baked into the frozen :ractor graph) --------
+  # The full_test_app does not call `protect_from_forgery` by default, so
+  # `protect_against_forgery?` is false and worker Ractors never issue a CSRF
+  # token (no hidden field, no <meta name="csrf-token">). We turn it on here,
+  # AFTER initialize! but BEFORE prepare_for_ractors!/make_app_shareable!, so
+  # the `true` value is frozen into the shared graph the workers read. This
+  # mirrors test/integration/ractor_server_test.rb:48,82-83 and lets the
+  # benchmark exercise the real authenticated write path. Forms stay remote
+  # (Turbo), so the token is emitted as a <meta name="csrf-token"> tag.
+  Rails.application.config.action_controller.allow_forgery_protection = true
+  ActionController::Base.allow_forgery_protection = true
+  ApplicationController.before_action :verify_authenticity_token
+
   # The CachingKeyGenerator (Rails.application.key_generator) keeps a per-secret
   # memoization cache (@key_generators). During boot/eager-load it may be primed
   # with keys derived from a not-yet-final secret_key_base, and that stale cache
@@ -210,5 +223,14 @@ else
   # in kino's main-Ractor threads with full Rails reloading.
   require_relative "config/application"
   Rails.application.initialize!
+  # Enable forgery protection when benchmarking so the authenticated POST
+  # write path works the same as in :ractor mode (otherwise no CSRF token is
+  # emitted and the harness's POST auth fails). Guarded so it never affects
+  # normal :threaded dev usage.
+  if ENV["BENCHMARK_STATS"]
+    Rails.application.config.action_controller.allow_forgery_protection = true
+    ActionController::Base.allow_forgery_protection = true
+    ApplicationController.before_action :verify_authenticity_token
+  end
   run Rails.application
 end

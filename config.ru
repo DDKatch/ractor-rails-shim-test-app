@@ -35,20 +35,37 @@
 #   SERVER=puma   bundle exec puma config.ru -p 3000 -e production
 #   SERVER=falcon bundle exec falcon config.ru -e production   # (falcon in Gemfile)
 
+# Capture the parent process's gem load paths ONCE (on the first evaluation,
+# in Falcon's main process). Falcon's THREADED container re-evaluates this
+# rackup inside each child thread with a reset $LOAD_PATH that no longer
+# includes the bundled gems, so a later `require "ractor_rails_shim"` fails
+# with "cannot load such file". We restore the captured paths before each
+# (re-)evaluation so the gem is resolvable in those child threads. Harmless
+# under normal single-evaluation servers (bundle exec already set them).
+$rrs_parent_load_path ||= $LOAD_PATH.dup
+$rrs_parent_gem_path   ||= Gem.path.dup
+
 ENV["RAILS_ENV"] ||= ENV["RACK_ENV"] || "production"
 ENV["SERVER"] ||= "puma"
 
-# Some containers (e.g. Falcon's threaded mode) re-evaluate this rackup inside
-# each child thread with a reset $LOAD_PATH that no longer includes the bundled
-# gems, so `require "ractor_rails_shim"` fails with "cannot load such file".
-# Re-establishing the Bundler gem paths here is idempotent and makes the gem
-# resolvable in those child threads. Harmless under normal single-evaluation
-# servers (bundle exec already set up the LOAD_PATH).
+# Restore the captured load paths (see note above) so `require "bundler/setup"`
+# and the shim resolve in Falcon's threaded child threads too. Guarded so a
+# missing method on some Ruby builds can't abort boot.
+$LOAD_PATH.replace($rrs_parent_load_path) if defined?($rrs_parent_load_path)
+Gem.path.replace($rrs_parent_gem_path) if defined?($rrs_parent_gem_path)
 require "bundler/setup" rescue nil
 
-$booted ||= false
-unless $booted
-  require "ractor_rails_shim"
+# Falcon's threaded / hybrid container starts the rack app in several threads
+# that each re-evaluate this rackup. The `$booted` flag alone is NOT safe: two
+# threads can both observe `$booted == false` and run `Rails.application.
+# initialize!` concurrently, drawing Devise's routes twice ("new_user_session
+# already in use"). Serialize the boot with a process-wide mutex so exactly one
+# thread initializes Rails; the rest wait and then skip via the flag.
+$boot_mutex ||= Mutex.new
+$booted    ||= false
+$boot_mutex.synchronize do
+  unless $booted
+    require "ractor_rails_shim"
   RactorRailsShim.install
 
   require_relative "config/application"
@@ -82,6 +99,7 @@ unless $booted
   end
 
   $booted = true
+  end
 end
 
 run Rails.application
