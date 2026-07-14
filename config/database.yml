@@ -7,12 +7,12 @@ default: &default
 
 development:
   <<: *default
-  database: full_test_app_dev
+  database: ractor_rails_shim_test_app_dev
 
 test:
   <<: *default
-  database: full_test_app_test
+  database: ractor_rails_shim_test_app_test
 
 production:
   <<: *default
-  database: full_test_app_prod
+  database: ractor_rails_shim_test_app_prod

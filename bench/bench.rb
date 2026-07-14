@@ -42,7 +42,7 @@ AB        = "/usr/sbin/ab"
 DURATION  = (ENV["BENCH_DURATION"] || 15).to_i
 CONCURRENCY = (ENV["BENCH_CONCURRENCY"] || 64).to_i
 NPROC     = Etc.nprocessors
-DB_URL    = "postgresql://dev@127.0.0.1:5432/full_test_app_test"
+DB_URL    = "postgresql://dev@127.0.0.1:5432/ractor_rails_shim_test_app_test"
 USER_EMAIL = "signin@test.com"
 USER_PW    = "password"
 
@@ -510,7 +510,7 @@ def main
         end
         # tidy the table so /posts GET stays fast for later scenarios
         system({ "DATABASE_URL" => DB_URL }, "psql", "-q", "-c", "DELETE FROM posts",
-                "postgresql://dev@127.0.0.1:5432/full_test_app_test") rescue nil
+                "postgresql://dev@127.0.0.1:5432/ractor_rails_shim_test_app_test") rescue nil
       rescue StandardError => e
         r[:errors][:post] = "#{e.class}: #{e.message}"
         puts "  POST /posts    FAILED: #{r[:errors][:post]}"

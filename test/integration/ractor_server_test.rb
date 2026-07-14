@@ -34,7 +34,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # (models picked up Devise methods), so we mirror production instead and just
   # point the database at the already-migrated test database.
   ENV["RAILS_ENV"] ||= "production"
-  ENV["DATABASE_URL"] ||= "postgresql://dev@127.0.0.1:5432/full_test_app_test"
+  ENV["DATABASE_URL"] ||= "postgresql://dev@127.0.0.1:5432/ractor_rails_shim_test_app_test"
 
   require_relative File.expand_path("../../config/application", __dir__)
 
@@ -363,7 +363,7 @@ else
       env = {
         "RACTOR_BOOT_SUBPROCESS" => "1",
         "RAILS_ENV" => "production",
-        "DATABASE_URL" => "postgresql://dev@127.0.0.1:5432/full_test_app_test",
+        "DATABASE_URL" => "postgresql://dev@127.0.0.1:5432/ractor_rails_shim_test_app_test",
       }
       cmd = ["bundle", "exec", "ruby", "-Itest", "-Ilib", __FILE__]
       stdout, stderr, status = Open3.capture3(env, *cmd, chdir: Rails.root.to_s)
