@@ -1,6 +1,6 @@
 source "https://rubygems.org"
 
-gem "ractor-rails-shim", path: "../ractor-rails-shim"
+gem "ractor-rails-shim", "~> 0.2"
 gem "rails", "~> 8.1.3"
 gem "propshaft"
 gem "tailwindcss-rails"
