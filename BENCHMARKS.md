@@ -24,28 +24,28 @@ cd ractor-rails-shim-test-app && ruby bench/bench.rb
 ## Headline results
 
 12 cores, macOS, Ruby 4.0.6 **(patched — `DDKatch/ruby` `ruby_4_0` iseq
-call-cache detach patch)**, Rails 8.1.3, PG 1.6.3; 2026-07-16 re-run, uniform
+call-cache detach patch)**, Rails 8.1.3, PG 1.6.3; 2026-07-16 re-run (ractor-rails-shim 0.2.4), uniform
 5-scale matrix, compaction off (`RUBY_GC_DISABLE_COMPACTION=1`), `ab -c 64` × 2
 runs — numbers below are measured, not estimates.
 
 | Server | Framing | /up (rps) | GET /posts (rps) | POST /posts (rps) | Peak RSS (MB) | Unique/footprint (MB) |
 |--------|---------|-----------|------------------|-------------------|---------------|----------------------|
-| **kino :threaded (-t5)** | A (1 proc, 5 thr) | **4,894** | **1,267** | **814** | 189.1 | 164.0 |
-| puma single (-w0 -t5) | A (1 proc, 5 thr) | 5,070 | 1,289 | 877 | 171.5 | 147.0 |
-| falcon async (-n1) | A (1 proc, fibers) | 4,733 | 1,184 | 856 | 237.9 | 202.0 |
-| **kino :ractor (-w5 -t1)** | B (5 workers) | **2,609** | **618** | **1,123** | 217.4 | 191.0 |
-| puma clustered (-w5 -t1) | B (5 workers) | 17,722 | 3,332 | 1,868 | 815.4 | 739.0 |
-| falcon forked (-n5) | B (5 workers) | 21,883 | 4,861 | 3,179 | 873.7 | 762.0 |
-| **kino :ractor (-w5 -t5)** | B (5×5) | **1,947** | **556** | **990** | 234.5 | 215.0 |
-| puma clustered (-w5 -t5) | B (5×5) | 17,673 | 3,205 | 2,111 | 823.7 | 758.0 |
-| **falcon hybrid (-n5 --threads 5)** | B (5×5) | **16,160** | **3,432** | **2,260** | 876.7 | 764.0 |
+| **kino :threaded (-t5)** | A (1 proc, 5 thr) | **112,105** | **1,272** | **892** | 402.5 | 326.1 |
+| puma single (-w0 -t5) | A (1 proc, 5 thr) | 5,076 | 1,354 | 902 | 191.4 | 166.9 |
+| falcon async (-n1) | A (1 proc, fibers) | 4,969 | 1,323 | 929 | 250.7 | 211.8 |
+| **kino :ractor (-w5 -t1)** | B (5 workers) | **113,752** | **655** | **1,825** | 357.6 | 265.9 |
+| puma clustered (-w5 -t1) | B (5 workers) | 19,493 | 3,081 | 1,962 | 868.8 | 768.0 |
+| falcon forked (-n5) | B (5 workers) | 21,232 | 4,947 | 3,151 | 965.6 | 851.4 |
+| **kino :ractor (-w5 -t5)** | B (5×5) | **102,818** | **571** | **1,212** | 366.2 | 259.0 |
+| puma clustered (-w5 -t5) | B (5×5) | 18,718 | 3,650 | 2,327 | 915.3 | 814.9 |
+| **falcon hybrid (-n5 --threads 5)** | B (5×5) | **15,587** | **3,020** | **2,504** | 894.6 | 821.4 |
 
 ‡ **kino `:threaded` is a valid single-process baseline** — the shim passes
 `SERVER=thread` for this scenario (minimal install, same as Puma/Falcon), so the
 reloader and Devise work and the write path is **stable** (`814` rps).
 
 † **kino `:ractor` read AND write paths are now STABLE under sustained load.**
-The 2026-07-16 re-run (patched Ruby + `ractor-rails-shim` 0.2.2,
+The 2026-07-16 re-run (patched Ruby + `ractor-rails-shim` 0.2.4,
 `RUBY_GC_DISABLE_COMPACTION=1`, `ab -c 64` × 2 runs) shows `POST /posts`
 returning **302** (write persisted) with **0 failures** at both `-w5 -t1` and
 `-w5 -t5`, matching reads (`/up`, `/posts` GET) at 0 failures.
@@ -167,7 +167,7 @@ kino `:ractor` needs two fixes that are **not** in stock Ruby 4.0.x / kino:
    shared across Ractors, so workers re-resolve methods fresh instead of
    dereferencing dangling callinfo pointers.
 
-The `ractor-rails-shim` gem (0.2.2) additionally fixes the Ruby-level
+The `ractor-rails-shim` gem (0.2.4) additionally fixes the Ruby-level
 Ractor-safety gaps: the per-Ractor `ActiveRecord::ConnectionHandler` is stored
 in `Ractor.current` (not the per-thread `IsolatedExecutionState`), and
 `ActiveModel::AttributeMethods#attribute_method_patterns_cache` is routed
