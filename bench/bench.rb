@@ -108,17 +108,15 @@ SCENARIOS = [
     pgrep: "kino",
     cmd: ["bundle", "exec", "kino", "-m", "ractor", "-w", WORKERS.to_s, "-t", "1",
           "-p", PORT.to_s, "-C", "kino.rb", "config_ractor.ru"],
-    # RUBY_GC_DISABLE_COMPACTION is ON by default for kino :ractor, but can be
-    # turned OFF (enabling GC compaction) via ENABLE_COMPACTION=1. Compaction
-    # was historically avoided for fear the patched env-strings path would
-    # SIGBUS under Ruby 4.0 compaction. That risk is gone now: this app runs the
-    # PATCHED Ruby (DDKatch/ruby `ruby_4_0` — iseq call-cache detach + env-string
-    # fixes), which is precisely what makes compaction safe here. A re-test with
-    # ENABLE_COMPACTION=1 ran clean (0 failures, no SIGBUS) across GET /posts and
-    # POST /posts, with a small latency win at -w5 -t1. We keep it OFF by default
-    # only as a precaution / escape hatch for untested request patterns.
+    # GC compaction is ON by default for kino :ractor (RUBY_GC_DISABLE_COMPACTION=0).
+    # It is safe here because the app runs the PATCHED Ruby (DDKatch/ruby
+    # `ractor-detach-call-caches` — iseq call-cache detach + env-string fixes),
+    # which eliminates the compaction-time SIGBUS that stock Ruby 4.0 had. A
+    # re-test ran clean (0 failures, no SIGBUS) across GET /posts and POST /posts,
+    # with a small latency win at -w5 -t1. Opt OUT with DISABLE_COMPACTION=1 if a
+    # SIGBUS ever appears under an untested request pattern.
     env: COMMON_ENV.merge("KINO_MODE" => "ractor", "BENCHMARK_STATS" => "1",
-                           "RUBY_GC_DISABLE_COMPACTION" => (ENV["ENABLE_COMPACTION"] ? "0" : "1")),
+                           "RUBY_GC_DISABLE_COMPACTION" => (ENV["DISABLE_COMPACTION"] ? "1" : "0")),
   },
   {
     name: "puma clustered (-w#{WORKERS} -t1)",
@@ -144,7 +142,7 @@ SCENARIOS = [
     cmd: ["bundle", "exec", "kino", "-m", "ractor", "-w", WORKERS.to_s, "-t", THREADS.to_s,
           "-p", PORT.to_s, "-C", "kino.rb", "config_ractor.ru"],
     env: COMMON_ENV.merge("KINO_MODE" => "ractor", "BENCHMARK_STATS" => "1",
-                           "RUBY_GC_DISABLE_COMPACTION" => (ENV["ENABLE_COMPACTION"] ? "0" : "1")),
+                           "RUBY_GC_DISABLE_COMPACTION" => (ENV["DISABLE_COMPACTION"] ? "1" : "0")),
   },
   {
     name: "puma clustered (-w#{WORKERS} -t#{THREADS})",

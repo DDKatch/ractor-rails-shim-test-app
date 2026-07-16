@@ -224,7 +224,12 @@ if mode == :ractor
     end
   end
 
-  use HealthShortCircuit
+  # HealthShortCircuit short-circuits /up at the Rack layer (before the shim or
+  # Rails) to kill kino :ractor's cold /up spike. It is kino-specific and Puma/
+  # Falcon have no equivalent (they always hit Rails' health endpoint), so it is
+  # OFF by default for a fair cross-server (/up) comparison. Opt in per-run with
+  # ENABLE_HEALTH_SHORT_CIRCUIT=1.
+  use HealthShortCircuit if ENV["ENABLE_HEALTH_SHORT_CIRCUIT"]
   run app
 else
   # :threaded — development live reload. Plain Rails boot, NO shim freeze, NO
@@ -241,6 +246,6 @@ else
     ActionController::Base.allow_forgery_protection = true
     ApplicationController.before_action :verify_authenticity_token
   end
-  use HealthShortCircuit
+  use HealthShortCircuit if ENV["ENABLE_HEALTH_SHORT_CIRCUIT"]
   run Rails.application
 end

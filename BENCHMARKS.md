@@ -25,20 +25,20 @@ cd ractor-rails-shim-test-app && ruby bench/bench.rb
 
 12 cores, macOS, Ruby 4.0.6 **(patched — `DDKatch/ruby` `ractor-detach-call-caches` iseq
 call-cache detach patch)**, Rails 8.1.3, PG 1.6.3; 2026-07-16 re-run (ractor-rails-shim 0.2.4), uniform
-5-scale matrix, compaction off (`RUBY_GC_DISABLE_COMPACTION=1`), `ab -c 64` × 2
+5-scale matrix, GC compaction ON by default (safe on the patched Ruby), `HealthShortCircuit` OFF by default so `/up` is measured fairly across all servers, `ab -c 64` × 2
 runs — numbers below are measured, not estimates.
 
 | Server | Framing | /up (rps) | GET /posts (rps) | POST /posts (rps) | Peak RSS (MB) | Unique/footprint (MB) |
 |--------|---------|-----------|------------------|-------------------|---------------|----------------------|
-| **kino :threaded (-t5)** | A (1 proc, 5 thr) | **112,105** | **1,272** | **892** | 402.5 | 326.1 |
-| puma single (-w0 -t5) | A (1 proc, 5 thr) | 5,076 | 1,354 | 902 | 191.4 | 166.9 |
-| falcon async (-n1) | A (1 proc, fibers) | 4,969 | 1,323 | 929 | 250.7 | 211.8 |
-| **kino :ractor (-w5 -t1)** | B (5 workers) | **113,752** | **655** | **1,825** | 357.6 | 265.9 |
-| puma clustered (-w5 -t1) | B (5 workers) | 19,493 | 3,081 | 1,962 | 868.8 | 768.0 |
-| falcon forked (-n5) | B (5 workers) | 21,232 | 4,947 | 3,151 | 965.6 | 851.4 |
-| **kino :ractor (-w5 -t5)** | B (5×5) | **102,818** | **571** | **1,212** | 366.2 | 259.0 |
-| puma clustered (-w5 -t5) | B (5×5) | 18,718 | 3,650 | 2,327 | 915.3 | 814.9 |
-| **falcon hybrid (-n5 --threads 5)** | B (5×5) | **15,587** | **3,020** | **2,504** | 894.6 | 821.4 |
+| **kino :threaded (-t5)** | A (1 proc, 5 thr) | **5,080** | **1,286** | **797** | 204.9 | 178.9 |
+| puma single (-w0 -t5) | A (1 proc, 5 thr) | 5,245 | 1,381 | 918 | 186.0 | 161.0 |
+| falcon async (-n1) | A (1 proc, fibers) | 5,062 | 1,229 | 885 | 230.0 | 214.1 |
+| **kino :ractor (-w5 -t1)** | B (5 workers) | **3,069** | **622** | **1,770** | 207.1 | 193.0 |
+| puma clustered (-w5 -t1) | B (5 workers) | 17,182 | 3,493 | 1,410 | 857.0 | 765.2 |
+| falcon forked (-n5) | B (5 workers) | 21,819 | 4,787 | 3,186 | 931.0 | 799.5 |
+| **kino :ractor (-w5 -t5)** | B (5×5) | **2,465** | **614** | **1,224** | 255.7 | 195.0 |
+| puma clustered (-w5 -t5) | B (5×5) | 18,734 | 3,910 | 2,567 | 914.7 | 811.1 |
+| **falcon hybrid (-n5 --threads 5)** | B (5×5) | **16,738** | **3,097** | **2,600** | 871.6 | 820.4 |
 
 ‡ **kino `:threaded` is a valid single-process baseline** — the shim passes
 `SERVER=thread` for this scenario (minimal install, same as Puma/Falcon), so the
@@ -108,8 +108,8 @@ requests.
 env-string fix — are exactly what eliminate the compaction-time SIGBUS. The old
 fear applied to stock Ruby 4.0 / the unpatched env-strings path; with the
 patched Ruby those crashes no longer occur, so compaction is viable for
-`kino :ractor`. It stays OFF by default (opt-in via `ENABLE_COMPACTION=1`) only
-as a precaution for request patterns not covered by the benchmark.
+`kino :ractor`. It is now ON by default; opt OUT via `DISABLE_COMPACTION=1` if a
+SIGBUS ever appears under an untested request pattern.
 
 | Config | Compaction | p50 (ms) | p95 (ms) | p99 (ms) | rps |
 |--------|------------|----------|----------|----------|-----|
