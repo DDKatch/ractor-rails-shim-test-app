@@ -8,3 +8,8 @@ inherit_gem: { rubocop-rails-omakase: rubocop.yml }
 # # Use `[a, [b, c]]` not `[ a, [ b, c ] ]`
 # Layout/SpaceInsideArrayLiteralBrackets:
 #   Enabled: false
+
+# `bench/` holds ad-hoc diagnostic/benchmark harnesses, not application code.
+AllCops:
+  Exclude:
+    - "bench/**/*"

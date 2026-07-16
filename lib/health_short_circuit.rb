@@ -16,7 +16,7 @@
 #
 # Configure the matched paths per app; defaults to ["/up"].
 class HealthShortCircuit
-  DEFAULT_PATHS = ["/up"].freeze
+  DEFAULT_PATHS = [ "/up" ].freeze
   DEFAULT_BODY = '{"status":"up"}'.freeze
 
   def initialize(app, paths: DEFAULT_PATHS, body: DEFAULT_BODY)
@@ -30,7 +30,7 @@ class HealthShortCircuit
 
   def call(env)
     if @paths.include?(env["PATH_INFO"])
-      [200, { "Content-Type" => "application/json", "Cache-Control" => "no-cache" }, [@body]]
+      [ 200, { "Content-Type" => "application/json", "Cache-Control" => "no-cache" }, [ @body ] ]
     else
       @app.call(env)
     end
