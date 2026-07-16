@@ -39,6 +39,9 @@
 # Ignore agent/tool cache directories.
 .serena/
 
+# Ignore benchmark result artifacts.
+/bench/results/
+
 # Ignore Ruby LSP cache.
 /.ruby-lsp/
 
