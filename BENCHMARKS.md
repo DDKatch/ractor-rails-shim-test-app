@@ -69,6 +69,32 @@ kino `:ractor` throughput is lower than Puma/Falcon clustered (it shares one
 frozen graph across Ractors and re-resolves methods per Ractor via the detach
 patch), but it is now **fully functional** on the read and write paths.
 
+## `class_attribute` allocation fix (0.2.3 → 0.2.4)
+
+Profiling `GET /posts` in a worker Ractor (StackProf, CPU + alloc) showed the
+shim's ractor-mode `class_attribute` reader allocating a fresh `Array` + a
+`Symbol` per ancestor on **every read** — the dominant allocation source for GET
+requests (~7,447 allocs/req). 0.2.4 rewrote it as a direct literal-key
+`IsolatedExecutionState` lookup (zero per-read allocation).
+
+End-to-end `ab` (kino `:ractor`, `ab -c 64 -t 15` × 3 runs, 12 cores, Ruby
+4.0.6 patched, Rails 8.1.3, compaction off):
+
+| Config | Version | p50 (ms) | p95 (ms) | p99 (ms) | rps |
+|--------|---------|----------|----------|----------|-----|
+| kino :ractor (-w5 -t1) | 0.2.3 | 104 | 138 | 144 | 584 |
+| kino :ractor (-w5 -t1) | **0.2.4** | **95** | **129** | **138** | **640** |
+| kino :ractor (-w5 -t5) | 0.2.3 | 108 | 147 | 229 | 572 |
+| kino :ractor (-w5 -t5) | **0.2.4** | **103** | **118** | **140** | **620** |
+
+Result: lower p50/p95/p99 across the board, ~9% higher throughput, and a large
+tail-latency drop (p99 229→140 at `-w5 -t5`), consistent with the
+StackProf-measured GC share 33%→27% of CPU and allocs/req 7,447→3,816 (−49%).
+The remaining `GET /posts` CPU cost is app-level: GC ~27%, PG ~25%,
+`Random.urandom` ~11% (per-request CSRF/session token — cacheable),
+`File.file?` ~6% (asset/path resolver — fixable via asset precompile + path
+cache).
+
 ## Memory columns
 
 "RSS sum" = sum of `ps` RSS across the whole server process tree (listeners +
