@@ -1,5 +1,10 @@
 # frozen_string_literal: true
 
+# Health/readiness probes short-circuit at the Rack layer, BEFORE the shim or
+# Rails dispatch. See lib/health_short_circuit.rb for the rationale (it exists
+# to kill the ~38 ms cold spike on /up under kino :ractor). Not a Rails route.
+require_relative "lib/health_short_circuit"
+
 # kino boot file for the dummy app. Mode-aware:
 #
 #   - :ractor   (production): eager-load + freeze + RactorRailsShim shareable
@@ -219,6 +224,7 @@ if mode == :ractor
     end
   end
 
+  use HealthShortCircuit
   run app
 else
   # :threaded — development live reload. Plain Rails boot, NO shim freeze, NO
@@ -235,5 +241,6 @@ else
     ActionController::Base.allow_forgery_protection = true
     ApplicationController.before_action :verify_authenticity_token
   end
+  use HealthShortCircuit
   run Rails.application
 end
