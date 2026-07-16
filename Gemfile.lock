@@ -278,7 +278,7 @@ GEM
       rack (>= 1.3)
     rackup (2.3.1)
       rack (>= 3)
-    ractor-rails-shim (0.2.1)
+    ractor-rails-shim (0.2.2)
       activesupport (>= 7.0)
     rails (8.1.3)
       actioncable (= 8.1.3)
@@ -519,7 +519,7 @@ CHECKSUMS
   rack-session (2.1.2) sha256=595434f8c0c3473ae7d7ac56ecda6cc6dfd9d37c0b2b5255330aa1576967ffe8
   rack-test (2.2.0) sha256=005a36692c306ac0b4a9350355ee080fd09ddef1148a5f8b2ac636c720f5c463
   rackup (2.3.1) sha256=6c79c26753778e90983761d677a48937ee3192b3ffef6bc963c0950f94688868
-  ractor-rails-shim (0.2.1) sha256=794ea8321ab54493c7f6a7e9dbba17383a9357268af7664885ac8adb3ef522c5
+  ractor-rails-shim (0.2.2) sha256=1081ab0f985caba5c6daa3e2a37fd2ff6ede60e2e43eef3476c740be79356561
   rails (8.1.3) sha256=6d017ba5348c98fc909753a8169b21d44de14d2a0b92d140d1a966834c3c9cd3
   rails-dom-testing (2.3.0) sha256=8acc7953a7b911ca44588bf08737bc16719f431a1cc3091a292bca7317925c1d
   rails-html-sanitizer (1.7.0) sha256=28b145cceaf9cc214a9874feaa183c3acba036c9592b19886e0e45efc62b1e89
