@@ -41,6 +41,8 @@
 
 # Ignore benchmark result artifacts.
 /bench/results/
+# Generated StackProf dumps / flamegraphs from the profiling harnesses.
+/results/
 
 # Ignore Ruby LSP cache.
 /.ruby-lsp/
