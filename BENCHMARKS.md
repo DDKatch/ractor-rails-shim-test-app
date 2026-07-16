@@ -3,7 +3,7 @@
 **Goal:** compare kino `:ractor` throughput/latency/memory vs Puma and Falcon.
 
 **Harness:** `ractor-rails-shim-test-app/bench/bench.rb` — boots each server,
-warms up, then runs `ab -c 64 -t 15 -k` against `/up` (no DB), `/posts` (GET,
+warms up, then runs `ab -c 64 -t 8 -k` against `/up` (no DB), `/posts` (GET,
 DB+render), and `POST /posts` (authenticated Devise write), and captures
 steady-state RSS of the server process tree.
 
@@ -23,48 +23,51 @@ cd ractor-rails-shim-test-app && ruby bench/bench.rb
 
 ## Headline results
 
-12 cores, macOS, Ruby 4.0.5, Rails 8.1.3, PG 1.6.3; refreshed by the
-2026-07-13 re-run on patched kino, uniform 5-scale matrix, compaction off,
-`ab -c 64 -t 15` × 3 runs — numbers below are measured, not estimates.
+12 cores, macOS, Ruby 4.0.6 **(patched — `DDKatch/ruby` `ruby_4_0` iseq
+call-cache detach patch)**, Rails 8.1.3, PG 1.6.3; 2026-07-16 re-run, uniform
+5-scale matrix, compaction off (`RUBY_GC_DISABLE_COMPACTION=1`), `ab -c 64` × 2
+runs — numbers below are measured, not estimates.
 
 | Server | Framing | /up (rps) | GET /posts (rps) | POST /posts (rps) | Peak RSS (MB) | Unique/footprint (MB) |
 |--------|---------|-----------|------------------|-------------------|---------------|----------------------|
-| **kino :threaded (-t5)** | A (1 proc, 5 thr) | **4,397** | **1,200** | **817** (STABLE) | 197 | 178 |
-| puma single (-w0 -t5) | A (1 proc, 5 thr) | 4,144 | 1,267 | 824 | 179 | 162 |
-| falcon async (-n1) | A (1 proc, fibers) | 5,133 | 1,269 | 846 | 245 | 202 |
-| **kino :ractor (-w5 -t1)** | B (5 workers) | **2,625** | **622** | POST FAIL‡‡ | 220 | 168 |
-| puma clustered (-w5 -t1) | B (5 workers) | 17,060 | 3,324 | 1,875 | 848 | 753 |
-| falcon forked (-n5) | B (5 workers) | 22,050 | 5,039 | 3,241 | 974 | 786 |
-| **kino :ractor (-w5 -t5)** | B (5×5) | **2,207** | **2,164** | POST FAIL‡‡ | 219 | 185 |
-| puma clustered (-w5 -t5) | B (5×5) | 13,963 | 3,287 | 2,131 | 928 | 793 |
-| **falcon hybrid (-n5 --threads 5)** | B (5×5) | **14,271** | **3,528** | **2,246** | 964 | 784 |
+| **kino :threaded (-t5)** | A (1 proc, 5 thr) | **4,894** | **1,267** | **814** | 189.1 | 164.0 |
+| puma single (-w0 -t5) | A (1 proc, 5 thr) | 5,070 | 1,289 | 877 | 171.5 | 147.0 |
+| falcon async (-n1) | A (1 proc, fibers) | 4,733 | 1,184 | 856 | 237.9 | 202.0 |
+| **kino :ractor (-w5 -t1)** | B (5 workers) | **2,609** | **618** | **1,123** | 217.4 | 191.0 |
+| puma clustered (-w5 -t1) | B (5 workers) | 17,722 | 3,332 | 1,868 | 815.4 | 739.0 |
+| falcon forked (-n5) | B (5 workers) | 21,883 | 4,861 | 3,179 | 873.7 | 762.0 |
+| **kino :ractor (-w5 -t5)** | B (5×5) | **1,947** | **556** | **990** | 234.5 | 215.0 |
+| puma clustered (-w5 -t5) | B (5×5) | 17,673 | 3,205 | 2,111 | 823.7 | 758.0 |
+| **falcon hybrid (-n5 --threads 5)** | B (5×5) | **16,160** | **3,432** | **2,260** | 876.7 | 764.0 |
 
 ‡ **kino `:threaded` is a valid single-process baseline** — the shim passes
 `SERVER=thread` for this scenario (minimal install, same as Puma/Falcon), so the
-reloader and Devise work and the write path is **stable** (`817` rps).
+reloader and Devise work and the write path is **stable** (`814` rps).
 
-† **kino `:ractor` reads are stable; writes are UNSTABLE under sustained load.**
-This 2026-07-13 re-run at `-w5` (patched kino, `RUBY_GC_DISABLE_COMPACTION=1`,
-`ab -c 64` × 3 runs): `POST /posts` **FAILS** — HTTP 500 at `-t1` (worker
-ractor crashes mid-flight) and `ECONNREFUSED` at `-w5 -t5` (worker ractor dies
-and the listener refuses connections) — while reads (`/up`, `/posts` GET) stay
-at 0 failures. Root cause is **NOT** the env/params sharing from the old
-footnote — that was the class #1 SIGBUS (`env_strings` cross-ractor
-`Opaque<RString>`), fixed by the per-ractor `thread_local!` cache in
-`env_strings.rs`. The remaining crash is **class #2: the frozen-iseq SIGBUS**.
-`Ractor.make_shareable(app)` freezes the Rails app's iseqs; under GC the
-inline-cache `klass` pointers dangle, so a worker ractor dies with `vm_ci_hash`
-SIGBUS. This is fundamental to Ruby 4.0's ractor model and cannot be patched
-per-method. A single `POST /posts` still works (302, row persisted); only
-*sustained concurrent* writes crash. **falcon async (-n1)** remains the clean
-"fibers+async, no shim" data point (single process, async fibers, ~202 MB
-unique — on par with kino's memory but stable, no shim needed).
+† **kino `:ractor` read AND write paths are now STABLE under sustained load.**
+The 2026-07-16 re-run (patched Ruby + `ractor-rails-shim` 0.2.2,
+`RUBY_GC_DISABLE_COMPACTION=1`, `ab -c 64` × 2 runs) shows `POST /posts`
+returning **302** (write persisted) with **0 failures** at both `-w5 -t1` and
+`-w5 -t5`, matching reads (`/up`, `/posts` GET) at 0 failures.
 
-‡‡ **kino `:ractor` `POST FAIL` (both -w5 -t1 and -w5 -t5).** The two kino
-`:ractor` rows show `POST /posts` as FAILED — that is the class #2 frozen-iseq
-SIGBUS from footnote † (sustained concurrent writes crash the worker ractor).
-Reads (`/up`, `/posts` GET) are fully stable, so the read rows above are valid.
-kino `:ractor` has no working sustained-write path on Ruby 4.0.5.
+Previously (pre-patch) `POST /posts` crashed under sustained concurrent writes
+via the **frozen-iseq SIGBUS**: `Ractor.make_shareable(app)` freezes the Rails
+app's iseqs; their inline-cache `klass` pointers / callinfo keys live in the
+global weak `vm->ci_table` and, under a worker Ractor's GC mark, dangle →
+SIGBUS in `vm_ci_hash`. This is now fixed by detaching the call caches when an
+iseq is shared across Ractors (see *Patched Ruby* below). A single `POST /posts`
+always worked; only *sustained concurrent* writes crashed — now resolved.
+
+‡‡ **kino `:ractor` `POST /posts` is GREEN (302) at both `-w5 -t1` and
+`-w5 -t5`.** The earlier "POST FAIL" rows were the frozen-iseq SIGBUS, now
+fixed. Reads (`/up`, `/posts` GET) were already stable; the whole matrix is now
+0-failure. `falcon async (-n1)` remains the clean "fibers+async, no shim" data
+point (single process, async fibers, ~202 MB unique — on par with kino's memory
+but stable, no shim needed).
+
+kino `:ractor` throughput is lower than Puma/Falcon clustered (it shares one
+frozen graph across Ractors and re-resolves methods per Ractor via the detach
+patch), but it is now **fully functional** on the read and write paths.
 
 ## Memory columns
 
@@ -101,10 +104,30 @@ limitation):
    timed out, aborting the whole run. Now the harness kills listeners + the pid
    tree and rescues the wait.
 
-## Patched kino
+## Patched Ruby (required for kino `:ractor`)
 
-The `kino :ractor` class #1 SIGBUS (cross-ractor env-string cache) is fixed in
-the patched kino fork:
-[DDKatch/kino](https://github.com/DDKatch/kino) on the
-`ractor-per-ractor-env-cache` branch. The class #2 frozen-iseq crash remains
-unfixed (Ruby 4.0 ractor model limitation).
+kino `:ractor` needs two fixes that are **not** in stock Ruby 4.0.x / kino:
+
+1. **Class #1 — cross-ractor env-string SIGBUS** (`env_strings`
+   `Opaque<RString>`): fixed in the patched kino fork
+   [DDKatch/kino](https://github.com/DDKatch/kino) on the
+   `ractor-per-ractor-env-cache` branch.
+2. **Class #2 — frozen-iseq call-cache SIGBUS** (`vm_ci_hash` under worker GC
+   mark): fixed in the patched Ruby fork
+   [DDKatch/ruby](https://github.com/DDKatch/ruby) on the
+   `ruby_4_0` branch — `rb_iseq_detach_call_caches` detaches an iseq's call
+   caches from the global `vm->ci_table` and invalidates them when the iseq is
+   shared across Ractors, so workers re-resolve methods fresh instead of
+   dereferencing dangling callinfo pointers.
+
+The `ractor-rails-shim` gem (0.2.2) additionally fixes the Ruby-level
+Ractor-safety gaps: the per-Ractor `ActiveRecord::ConnectionHandler` is stored
+in `Ractor.current` (not the per-thread `IsolatedExecutionState`), and
+`ActiveModel::AttributeMethods#attribute_method_patterns_cache` is routed
+through `Ractor.current`. **With the patched Ruby AND the shim**, kino `:ractor`
+serves `/up`, `GET /posts`, and `POST /posts` with 0 transport failures and 0
+server errors under load.
+
+**Without the patched Ruby**, kino `:ractor` SIGBUSes under load even with the
+shim — the call-cache detach is a VM-internals fix that cannot be done at the
+Ruby level.
