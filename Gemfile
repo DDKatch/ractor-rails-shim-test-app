@@ -18,4 +18,5 @@ group :development, :test do
   gem "rubocop-rails-omakase"
   gem "brakeman"
   gem "bundler-audit"
+  gem "stackprof"
 end
