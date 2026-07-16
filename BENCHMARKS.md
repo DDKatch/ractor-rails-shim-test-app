@@ -103,6 +103,14 @@ Ruby 4.0 compaction. Re-testing (Ruby 4.0.6 patched, shim 0.2.4, `ab -c 64 -t 15
 × 3 runs) with compaction **enabled** ran clean — no SIGBUS/crash, 0 failed
 requests.
 
+**Why it's safe now:** the test app runs the **patched Ruby** (DDKatch/ruby
+`ruby_4_0`), whose two VM-internals fixes — the iseq call-cache detach and the
+env-string fix — are exactly what eliminate the compaction-time SIGBUS. The old
+fear applied to stock Ruby 4.0 / the unpatched env-strings path; with the
+patched Ruby those crashes no longer occur, so compaction is viable for
+`kino :ractor`. It stays OFF by default (opt-in via `ENABLE_COMPACTION=1`) only
+as a precaution for request patterns not covered by the benchmark.
+
 | Config | Compaction | p50 (ms) | p95 (ms) | p99 (ms) | rps |
 |--------|------------|----------|----------|----------|-----|
 | kino :ractor (-w5 -t1) | off | 95 | 129 | 138 | 640 |
