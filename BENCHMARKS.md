@@ -95,6 +95,27 @@ The remaining `GET /posts` CPU cost is app-level: GC ~27%, PG ~25%,
 `File.file?` ~6% (asset/path resolver — fixable via asset precompile + path
 cache).
 
+## GC compaction (kino :ractor)
+
+Compaction was previously forced off (`RUBY_GC_DISABLE_COMPACTION=1`) for
+`kino :ractor` due to a suspected SIGBUS in the patched env-strings path under
+Ruby 4.0 compaction. Re-testing (Ruby 4.0.6 patched, shim 0.2.4, `ab -c 64 -t 15`
+× 3 runs) with compaction **enabled** ran clean — no SIGBUS/crash, 0 failed
+requests.
+
+| Config | Compaction | p50 (ms) | p95 (ms) | p99 (ms) | rps |
+|--------|------------|----------|----------|----------|-----|
+| kino :ractor (-w5 -t1) | off | 95 | 129 | 138 | 640 |
+| kino :ractor (-w5 -t1) | **on** | 95 | **110** | **129** | **655** |
+| kino :ractor (-w5 -t5) | off | 103 | 118 | 140 | 620 |
+| kino :ractor (-w5 -t5) | **on** | 106 | 121 | 145 | 605 |
+
+Result: enabling compaction helps the single-worker-per-Ractor config (p95
+129→110, p99 138→129, +2% rps) and is ~neutral at 5×5 (within run-to-run
+variance — ab flagged high std-dev on these runs). Marginal overall, so the
+harness keeps compaction **off by default** and exposes it via
+`ENABLE_COMPACTION=1`.
+
 ## Memory columns
 
 "RSS sum" = sum of `ps` RSS across the whole server process tree (listeners +
