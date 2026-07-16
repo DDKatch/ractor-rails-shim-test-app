@@ -42,32 +42,14 @@ runs — numbers below are measured, not estimates.
 
 ‡ **kino `:threaded` is a valid single-process baseline** — the shim passes
 `SERVER=thread` for this scenario (minimal install, same as Puma/Falcon), so the
-reloader and Devise work and the write path is **stable** (`814` rps).
+reloader and Devise work and the write path is stable (see table, ~797 rps).
 
-† **kino `:ractor` read AND write paths are now STABLE under sustained load.**
-The 2026-07-16 re-run (patched Ruby + `ractor-rails-shim` 0.2.4,
-`RUBY_GC_DISABLE_COMPACTION=1`, `ab -c 64` × 2 runs) shows `POST /posts`
-returning **302** (write persisted) with **0 failures** at both `-w5 -t1` and
-`-w5 -t5`, matching reads (`/up`, `/posts` GET) at 0 failures.
-
-Previously (pre-patch) `POST /posts` crashed under sustained concurrent writes
-via the **frozen-iseq SIGBUS**: `Ractor.make_shareable(app)` freezes the Rails
-app's iseqs; their inline-cache `klass` pointers / callinfo keys live in the
-global weak `vm->ci_table` and, under a worker Ractor's GC mark, dangle →
-SIGBUS in `vm_ci_hash`. This is now fixed by detaching the call caches when an
-iseq is shared across Ractors (see *Patched Ruby* below). A single `POST /posts`
-always worked; only *sustained concurrent* writes crashed — now resolved.
-
-‡‡ **kino `:ractor` `POST /posts` is GREEN (302) at both `-w5 -t1` and
-`-w5 -t5`.** The earlier "POST FAIL" rows were the frozen-iseq SIGBUS, now
-fixed. Reads (`/up`, `/posts` GET) were already stable; the whole matrix is now
-0-failure. `falcon async (-n1)` remains the clean "fibers+async, no shim" data
-point (single process, async fibers, ~202 MB unique — on par with kino's memory
-but stable, no shim needed).
-
+All scenarios serve `/up`, `GET /posts`, and `POST /posts` with **0 failures**.
 kino `:ractor` throughput is lower than Puma/Falcon clustered (it shares one
-frozen graph across Ractors and re-resolves methods per Ractor via the detach
-patch), but it is now **fully functional** on the read and write paths.
+frozen graph across Ractors and re-resolves methods per Ractor via the patched
+Ruby's call-cache detach), but it is fully functional on the read and write
+paths. `falcon async (-n1)` is the clean "fibers+async, no shim" data point
+(single process, async fibers, ~214 MB unique — on par with kino's memory).
 
 ## `class_attribute` allocation fix (0.2.3 → 0.2.4)
 
