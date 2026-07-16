@@ -23,7 +23,7 @@ cd ractor-rails-shim-test-app && ruby bench/bench.rb
 
 ## Headline results
 
-12 cores, macOS, Ruby 4.0.6 **(patched — `DDKatch/ruby` `ruby_4_0` iseq
+12 cores, macOS, Ruby 4.0.6 **(patched — `DDKatch/ruby` `ractor-detach-call-caches` iseq
 call-cache detach patch)**, Rails 8.1.3, PG 1.6.3; 2026-07-16 re-run (ractor-rails-shim 0.2.4), uniform
 5-scale matrix, compaction off (`RUBY_GC_DISABLE_COMPACTION=1`), `ab -c 64` × 2
 runs — numbers below are measured, not estimates.
@@ -104,7 +104,7 @@ Ruby 4.0 compaction. Re-testing (Ruby 4.0.6 patched, shim 0.2.4, `ab -c 64 -t 15
 requests.
 
 **Why it's safe now:** the test app runs the **patched Ruby** (DDKatch/ruby
-`ruby_4_0`), whose two VM-internals fixes — the iseq call-cache detach and the
+`ractor-detach-call-caches`), whose two VM-internals fixes — the iseq call-cache detach and the
 env-string fix — are exactly what eliminate the compaction-time SIGBUS. The old
 fear applied to stock Ruby 4.0 / the unpatched env-strings path; with the
 patched Ruby those crashes no longer occur, so compaction is viable for
@@ -170,7 +170,7 @@ kino `:ractor` needs two fixes that are **not** in stock Ruby 4.0.x / kino:
 2. **Class #2 — frozen-iseq call-cache SIGBUS** (`vm_ci_hash` under worker GC
    mark): fixed in the patched Ruby fork
    [DDKatch/ruby](https://github.com/DDKatch/ruby) on the
-   `ruby_4_0` branch — `rb_iseq_detach_call_caches` detaches an iseq's call
+   `ractor-detach-call-caches` branch — `rb_iseq_detach_call_caches` detaches an iseq's call
    caches from the global `vm->ci_table` and invalidates them when the iseq is
    shared across Ractors, so workers re-resolve methods fresh instead of
    dereferencing dangling callinfo pointers.
