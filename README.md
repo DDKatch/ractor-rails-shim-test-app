@@ -15,7 +15,10 @@ Falcon benchmark analysis.
 
 ## Requirements
 
-- **Ruby 4.0.5** (Ractor support) and **Rails 8.1.3**
+- **Ruby 4.0.x** with **Ractor support** and **Rails 8.1.3**. To serve under
+  `kino -m ractor` you need the **patched Ruby** — see *"Patched Ruby"* in
+  [`BENCHMARKS.md`](./BENCHMARKS.md) ([DDKatch/ruby](https://github.com/DDKatch/ruby)
+  `ractor-detach-call-caches`).
 - **PostgreSQL** (use the `pg` gem — `sqlite3` is **ractor-unsafe** and raises
   `Ractor::UnsafeError`)
 - To serve under `kino -m ractor`: a **patched `kino` gem** (per-ractor
@@ -103,12 +106,13 @@ BENCH_DURATION=20 BENCH_CONCURRENCY=64 BENCH_RUNS=3 ruby bench/bench.rb
 
 Measured results are written as JSON to `bench/results/`.
 
-**Known limitation (expected):** kino `:ractor` **reads are stable**, but
-sustained *concurrent* `POST /posts` crashes a worker Ractor with the
-**class #2 frozen-iseq SIGBUS** (fundamental to Ruby 4.0's ractor model — the
-app graph is frozen, so inline-cache pointers dangle under GC). Therefore the
-kino `:ractor` `POST /posts` column shows **FAIL** under load; single writes
-and every read path work. This is a Ruby 4.0 limitation, not a harness gap.
+**kino `:ractor` is fully functional on both read and write paths** under
+sustained load. With the patched Ruby ([DDKatch/ruby](https://github.com/DDKatch/ruby)
+`ractor-detach-call-caches`) **and** `ractor-rails-shim` 0.2.4, the whole matrix
+(`/up`, `GET /posts`, `POST /posts`) serves with **0 failures** — the
+previously-seen frozen-iseq SIGBUS is fixed by the iseq call-cache detach. See
+[`BENCHMARKS.md`](./BENCHMARKS.md) for the full 0-failure matrix and the
+*Patched Ruby* section.
 
 ### kino patch (one-time, for `:ractor` mode)
 
@@ -133,9 +137,9 @@ codesign --force --sign - <kino-gem>/lib/kino/kino.bundle
 
 See the published kino fork
 [DDKatch/kino](https://github.com/DDKatch/kino) (`ractor-per-ractor-env-cache`
-branch) → *"How to build/patch kino from source"* for the exact paths and the
-`RUBY_GC_DISABLE_COMPACTION=1` note. The patched source lives in the published
-kino fork, not in this repo.
+branch) → *"How to build/patch kino from source"* for the exact paths. The
+patched source lives in the published kino fork, not in this repo. Compaction
+is **ON by default** on the patched Ruby (opt OUT via `DISABLE_COMPACTION=1`).
 
 ## Automated verification
 
@@ -163,7 +167,7 @@ are not loaded by Rails and are not required to run the app or benchmarks.
 | `kino.rb` | kino server configuration (worker/thread counts). Passed to kino via `-C kino.rb` from `config_ractor.ru`. Not a Rails file. |
 | `verify_blockers.rb` | Boots the app in `:ractor` mode and checks key endpoints (`/up` → 200, `Post.count`, Devise routes) as a quick smoke test that the shim works outside the test framework.
 | `load_root.rb` | Deliberate **load-test reproducer**. Hits a *running* server's `/` with configurable concurrency/duration to reproduce racor-worker connection errors the in-process Minitest cannot. Run against a live server (e.g. `kino -m ractor`); usage is printed in the file. |
-| `bench/repro.rb` | Deliberate **sustained-crash reproducer**. Signs in once, then hammers `POST /posts` with `ab` until a worker Bus Error appears, isolating the class #2 frozen-iseq crash. Lives in `bench/` alongside the main harness. |
+| `bench/repro.rb` | **Sustained write-path stress harness**. Signs in once, then hammers `POST /posts` with `ab` for `REPRO_ROUNDS` rounds (default 12), reporting rps per round. With the patched Ruby the class #2 frozen-iseq SIGBUS no longer occurs, so it runs clean (302s); a Bus Error under an untested request pattern is the signal to opt out of compaction via `DISABLE_COMPACTION=1`. Lives in `bench/` alongside the main harness. |
 
 ## License
 
