@@ -114,7 +114,7 @@ SCENARIOS = [
     # :ractor may still crash under sustained load; the harness records (not
     # aborts on) such failures.
     env: COMMON_ENV.merge("KINO_MODE" => "ractor", "BENCHMARK_STATS" => "1",
-                           "RUBY_GC_DISABLE_COMPACTION" => "1"),
+                           "RUBY_GC_DISABLE_COMPACTION" => (ENV["ENABLE_COMPACTION"] ? "0" : "1")),
   },
   {
     name: "puma clustered (-w#{WORKERS} -t1)",
@@ -140,7 +140,7 @@ SCENARIOS = [
     cmd: ["bundle", "exec", "kino", "-m", "ractor", "-w", WORKERS.to_s, "-t", THREADS.to_s,
           "-p", PORT.to_s, "-C", "kino.rb", "config_ractor.ru"],
     env: COMMON_ENV.merge("KINO_MODE" => "ractor", "BENCHMARK_STATS" => "1",
-                           "RUBY_GC_DISABLE_COMPACTION" => "1"),
+                           "RUBY_GC_DISABLE_COMPACTION" => (ENV["ENABLE_COMPACTION"] ? "0" : "1")),
   },
   {
     name: "puma clustered (-w#{WORKERS} -t#{THREADS})",
