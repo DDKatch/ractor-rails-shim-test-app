@@ -108,13 +108,13 @@ SCENARIOS = [
     pgrep: "kino",
     cmd: ["bundle", "exec", "kino", "-m", "ractor", "-w", WORKERS.to_s, "-t", "1",
           "-p", PORT.to_s, "-C", "kino.rb", "config_ractor.ru"],
-    # GC compaction is ON by default for kino :ractor (RUBY_GC_DISABLE_COMPACTION=0).
-    # It is safe here because the app runs the PATCHED Ruby (DDKatch/ruby
-    # `ractor-detach-call-caches` — iseq call-cache detach + env-string fixes),
-    # which eliminates the compaction-time SIGBUS that stock Ruby 4.0 had. A
-    # re-test ran clean (0 failures, no SIGBUS) across GET /posts and POST /posts,
-    # with a small latency win at -w5 -t1. Opt OUT with DISABLE_COMPACTION=1 if a
-    # SIGBUS ever appears under an untested request pattern.
+    # GC compaction: Ruby's default is GC.auto_compact == false (4.0.6), so kino
+    # :ractor does NOT auto-compact during the benchmark. RUBY_GC_DISABLE_COMPACTION=0
+    # only refrains from disabling compaction; it does NOT switch it on. Forcing
+    # GC.auto_compact=true on stock 4.0.6 was observed to hang kino :ractor under
+    # sustained load (frozen shared Ractor graph corruption), so the config no longer
+    # sets it. DISABLE_COMPACTION=1 makes the no-compaction stance explicit (no-op
+    # under the default since compaction is already off).
     env: COMMON_ENV.merge("KINO_MODE" => "ractor", "BENCHMARK_STATS" => "1",
                            "RUBY_GC_DISABLE_COMPACTION" => (ENV["DISABLE_COMPACTION"] ? "1" : "0")),
   },
