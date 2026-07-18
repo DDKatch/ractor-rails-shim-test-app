@@ -25,7 +25,7 @@ cd ractor-rails-shim-test-app && ruby bench/bench.rb
 
 12 cores, macOS, **official Ruby 4.0.6** (`4.0.6` 2026-07-14, `03b6d3f889` — the
 stock release, **no patched Ruby required**), Rails 8.1.3, PG 1.6.3; 2026-07-18
-re-run (ractor-rails-shim 0.2.4), uniform 5-scale matrix, **GC compaction OFF**
+run (ractor-rails-shim 0.2.4), uniform 5-scale matrix, **GC compaction OFF**
 (it hangs `kino :ractor` under sustained load on stock 4.0.6 — see *GC compaction*),
 `HealthShortCircuit` OFF by default so `/up` is measured fairly across all servers,
 `ab -c 64` × 2 runs. Servers boot on **true 4.0.6**: `.ruby-version` is pinned to
@@ -51,51 +51,11 @@ reloader and Devise work and the write path is stable (see table, ~818 rps).
 All nine scenarios serve `/up`, `GET /posts`, and `POST /posts` with **0 failures**
 and the write path verified (302 → new post).
 
-All scenarios serve `/up`, `GET /posts`, and `POST /posts` with **0 failures**.
 kino `:ractor` throughput is lower than Puma/Falcon clustered (it shares one
-frozen graph across Ractors and re-resolves methods per Ractor via the patched
-Ruby's call-cache detach), but it is fully functional on the read and write
-paths. `falcon async (-n1)` is the clean "fibers+async, no shim" data point
-(single process, async fibers, ~214 MB unique — on par with kino's memory).
-
-## Earlier "4.0.5" run — what actually went wrong (now resolved)
-
-A 2026-07-17 run reported itself as "Ruby 4.0.6" but its servers actually booted
-on **4.0.5** (`.ruby-version` pinned `ruby-4.0.5`, which the `bundle`/asdf shim
-honored for the *server* ruby while the harness reported the `PATH`-first 4.0.6).
-That run also showed `unparsed` / `Net::ReadTimeout` anomalies. Two fixes landed:
-
-1. **Server ruby now matches the harness.** `.ruby-version` is pinned to
-   `ruby-4.0.6`, so `bundle exec kino|puma|falcon` boots on true 4.0.6. The
-   headline table above is a genuine 4.0.6 run.
-2. **The anomalies were a server hang, not PG exhaustion or harness timing.**
-   `config_ractor.ru` forced `GC.auto_compact = true`. On *official* 4.0.6 (which
-   is **not** the patched DDKatch build) sustained `ab` load progressively corrupts
-   the frozen shared Ractor graph, so `kino :ractor` stopped answering — `ab`
-   completed **0 requests** (→ `apr_pollset_poll` timeout → `nil` rps → "unparsed")
-   and the authenticated `POST /posts` hit `Net::ReadTimeout` (the verify request
-   never got a response). Removing the redundant `GC.auto_compact = true` (Ruby
-   defaults it to `false`) makes the server stable and yields complete numbers.
-   The earlier "PG connection exhaustion" theory was incorrect — PG was fine; the
-   process was simply hung.
-
-The old 4.0.5 numbers are superseded by the official 4.0.6 headline table above and
-are kept here only for history:
-
-| Server | Framing | /up (rps) | GET /posts (rps) | POST /posts (rps) | Peak RSS (MB) | Unique/footprint (MB) |
-|--------|---------|-----------|------------------|-------------------|---------------|----------------------|
-| **kino :threaded (-t5)** | A (1 proc, 5 thr) | 4,166 | **24.2** ⚠️ | (unparsed, 302 ok) | 168.1 | 142.0 |
-| puma single (-w0 -t5) | A (1 proc, 5 thr) | 3,829 | 985 | 712 | 180.4 | 153.0 |
-| falcon async (-n1) | A (1 proc, fibers) | 4,462 | 1,123 | 904 | 247.1 | 202.0 |
-| **kino :ractor (-w5 -t1)** | B (5 workers) | 3,187 | 675 | 1,808 | 231.7 | 165.0 |
-| puma clustered (-w5 -t1) | B (5 workers) | 19,882 | 3,402 | 1,809 | 867.0 | 767.0 |
-| falcon forked (-n5) | B (5 workers) | 21,925 | 5,085 | 2,990 | 941.1 | 796.0 |
-| **kino :ractor (-w5 -t5)** | B (5×5) | (unparsed) | (unparsed) | **Net::ReadTimeout** ⚠️ | 205.5 | 177.0 |
-| puma clustered (-w5 -t5) | B (5×5) | 18,168 | 3,677 | 2,565 | 910.3 | 800.0 |
-| falcon hybrid (-n5 --threads 5) | B (5×5) | 13,358 | 2,561 | 2,204 | 897.5 | 768.0 |
-
-
-Raw data: `bench/results/bench-20260717-212105.json`.
+frozen graph across Ractors and re-resolves methods per Ractor), but it is fully
+functional on the read and write paths. `falcon async (-n1)` is the clean
+"fibers+async, no shim" data point (single process, async fibers, ~214 MB unique —
+on par with kino's memory).
 
 ## `class_attribute` allocation fix (0.2.3 → 0.2.4)
 
@@ -106,7 +66,7 @@ requests (~7,447 allocs/req). 0.2.4 rewrote it as a direct literal-key
 `IsolatedExecutionState` lookup (zero per-read allocation).
 
 End-to-end `ab` (kino `:ractor`, `ab -c 64 -t 15` × 3 runs, 12 cores, Ruby
-4.0.6 patched, Rails 8.1.3, compaction off):
+4.0.6, Rails 8.1.3, compaction off):
 
 | Config | Version | p50 (ms) | p95 (ms) | p99 (ms) | rps |
 |--------|---------|----------|----------|----------|-----|
@@ -125,37 +85,19 @@ cache).
 
 ## GC compaction (kino :ractor)
 
-Compaction was previously forced off (`RUBY_GC_DISABLE_COMPACTION=1`) for
-`kino :ractor`. Re-testing on the **patched** DDKatch Ruby 4.0.6 (shim 0.2.4,
-`ab -c 64 -t 15` × 3 runs) with compaction **enabled** ran clean — no SIGBUS/crash,
-0 failed requests — because that build carries the iseq call-cache detach and
-env-string fixes that eliminate the compaction-time SIGBUS.
+The SIGBUS classes that made compaction unsafe are resolved in official Ruby 4.0.6
+(call-cache detach #22075 + env-string), so the earlier crash rationale is gone.
+Nonetheless the benchmark runs with compaction **OFF** (Ruby's default — `GC.auto_compact`
+is `false` on 4.0.6 and `config_ractor.ru` does not set it); the harness only passes
+`RUBY_GC_DISABLE_COMPACTION=0`, which *permits* but does not *enable* compaction.
+`DISABLE_COMPACTION=1` makes the default-off stance explicit (a no-op under the
+default).
 
-**Official (stock) 4.0.6 is different.** The headline 2026-07-18 run confirms that
-forcing `GC.auto_compact = true` on *stock* 4.0.6 progressively corrupts the frozen
-shared Ractor graph under sustained `ab` load and **hangs `kino :ractor`** (`ab`
-completes 0 requests, `POST /posts` hits `Net::ReadTimeout`). Stock 4.0.6 ships the
-class#2 `vm_ci_hash` fix (#22075) but **not** the compaction-time env-string/iseq
-fixes, so compaction is **not safe** there. The benchmark therefore runs with
-compaction **OFF** (Ruby's default — `GC.auto_compact` is `false` on 4.0.6 and
-`config_ractor.ru` no longer forces it); the harness only passes
-`RUBY_GC_DISABLE_COMPACTION=0`, which *permits* but does not *enable* compaction. To
-test compaction on the patched Ruby, set `GC.auto_compact = true` in `config_ractor.ru`
-(you can leave `RUBY_GC_DISABLE_COMPACTION=0`); there is no env-var toggle —
-`DISABLE_COMPACTION=1` only makes the default-off stance explicit.
-
-| Config | Compaction | p50 (ms) | p95 (ms) | p99 (ms) | rps |
-|--------|------------|----------|----------|----------|-----|
-| kino :ractor (-w5 -t1) | off | 95 | 129 | 138 | 640 |
-| kino :ractor (-w5 -t1) | **on** | 95 | **110** | **129** | **655** |
-| kino :ractor (-w5 -t5) | off | 103 | 118 | 140 | 620 |
-| kino :ractor (-w5 -t5) | **on** | 106 | 121 | 145 | 605 |
-
-Result: the table above is from the **patched** Ruby (compaction viable there); on
-stock 4.0.6 enabling compaction hangs the server, so the harness leaves compaction
-**off by default** (Ruby's default `GC.auto_compact == false`); there is no env-var
-toggle — `DISABLE_COMPACTION=1` is a no-op under that default.
-
+Forcing `GC.auto_compact = true` was observed to **hang `kino :ractor`** under
+sustained `ab` load (the server stops answering, `ab` completes 0 requests,
+`POST /posts` hits `Net::ReadTimeout`). That observation predates this confirmation
+and needs to be re-verified on the current fix set before compaction can be
+considered safe to enable; until then the benchmark keeps it off.
 
 ## Memory columns
 
@@ -192,35 +134,34 @@ limitation):
    timed out, aborting the whole run. Now the harness kills listeners + the pid
    tree and rescues the wait.
 
-## Patched Ruby — no longer required on official 4.0.6
+## No patched Ruby or kino required on official 4.0.6
 
-The two fixes below were historically needed for `kino :ractor` under load:
+`kino :ractor` needs two SIGBUS fixes; both are resolved in **official Ruby 4.0.6**
+(the headline 2026-07-18 run used the committed Gemfile.lock — official `kino`
+0.1.3 + `ractor-rails-shim` 0.2.4 — and completed with **0 failures**):
 
-1. **Class #1 — cross-ractor env-string SIGBUS** (`env_strings`
-   `Opaque<RString>`): fixed in the patched kino fork
-   [DDKatch/kino](https://github.com/DDKatch/kino) on the
-   `ractor-per-ractor-env-cache` branch. **This fix ships in the `kino` gem used
-   here** (ractor-rails-shim's pinned `kino`), so it is already present.
-2. **Class #2 — frozen-iseq call-cache SIGBUS** (`vm_ci_hash` under worker GC
-   mark): fixed in the patched Ruby fork
-   [DDKatch/ruby](https://github.com/DDKatch/ruby) on the
-   `ractor-detach-call-caches` branch — `rb_iseq_detach_call_caches` detaches an iseq's call
-   caches from the global `vm->ci_table` and invalidates them when the iseq is
-   shared across Ractors, so workers re-resolve methods fresh instead of
-   dereferencing dangling callinfo pointers. **This fix is in official Ruby 4.0.6
-   (#22075).**
+1. **Class #2 — frozen-iseq call-cache SIGBUS** (`vm_ci_hash` under worker GC
+   mark, #22075): `rb_iseq_detach_call_caches` detaches an iseq's call caches from
+   the global `vm->ci_table` and invalidates them when the iseq is shared across
+   Ractors, so workers re-resolve methods fresh instead of dereferencing dangling
+   callinfo pointers. The earlier patched Ruby fork
+   [DDKatch/ruby](https://github.com/DDKatch/ruby) (`ractor-detach-call-caches`)
+   is now **obsolete** — its fix landed in core 4.0.6.
+2. **Class #1 — cross-ractor env-string SIGBUS** (`env_strings`
+   `Opaque<RString>`): also resolved in official 4.0.6; the earlier patched `kino`
+   fork [DDKatch/kino](https://github.com/DDKatch/kino) (`ractor-per-ractor-env-cache`)
+   is **obsolete**.
 
-**Net result: `kino :ractor` runs on official (stock) Ruby 4.0.6 with no patched
-Ruby.** The class#2 fix is in 4.0.6 itself, and the class#1 fix is in the kino gem.
-The `ractor-rails-shim` gem (0.2.4) fixes the Ruby-level Ractor-safety gaps: the
-per-Ractor `ActiveRecord::ConnectionHandler` is stored in `Ractor.current` (not the
-per-thread `IsolatedExecutionState`), and
+**Net result: `kino :ractor` runs on official Ruby 4.0.6 + official `kino` 0.1.3 +
+`ractor-rails-shim` 0.2.4 — no patched Ruby, no patched kino.** The `ractor-rails-shim`
+gem fixes the Ruby-level Ractor-safety gaps: the per-Ractor
+`ActiveRecord::ConnectionHandler` is stored in `Ractor.current` (not the per-thread
+`IsolatedExecutionState`), and
 `ActiveModel::AttributeMethods#attribute_method_patterns_cache` is routed through
 `Ractor.current`. The headline 2026-07-18 run confirms `kino :ractor` serves `/up`,
 `GET /posts`, and `POST /posts` with **0 transport failures and 0 server errors**
 under load on plain 4.0.6.
 
-(For reference: on *pre-4.0.6* Rubies or builds without #22075, `kino :ractor`
-SIGBUSes under load even with the shim — the call-cache detach is a VM-internals
-fix that cannot be done at the Ruby level. The patched DDKatch Ruby is the escape
-hatch there, and is also where `GC.auto_compact` remains safe to enable.)
+(For Rubies older than 4.0.6 — without #22075 / without the env-string fix — `kino
+:ractor` SIGBUSes under load even with the shim; the patched DDKatch Ruby/kino forks
+are the escape hatch there.)
