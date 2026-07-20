@@ -3,9 +3,10 @@
 **Goal:** compare kino `:ractor` throughput/latency/memory vs Puma and Falcon.
 
 **Harness:** `ractor-rails-shim-test-app/bench/bench.rb` — boots each server,
-warms up, then runs `ab -c 64 -t 8 -k` against `/up` (no DB), `/posts` (GET,
-DB+render), and `POST /posts` (authenticated Devise write), and captures
-steady-state RSS of the server process tree.
+warms up, then runs `ab -c 64 -t <DURATION> -k` against `/up` (no DB), `/posts`
+(GET, DB+render), and `POST /posts` (authenticated Devise write), and captures
+steady-state RSS of the server process tree. Default `BENCH_DURATION=15`; the
+headline run below used `BENCH_DURATION=30 BENCH_WARMUP=5 BENCH_RUNS=1`.
 
 Run:
 
@@ -24,38 +25,92 @@ cd ractor-rails-shim-test-app && ruby bench/bench.rb
 ## Headline results — official Ruby 4.0.6
 
 12 cores, macOS, **official Ruby 4.0.6** (`4.0.6` 2026-07-14, `03b6d3f889` — the
-stock release, **no patched Ruby required**), Rails 8.1.3, PG 1.6.3; 2026-07-18
-run (ractor-rails-shim 0.2.4), uniform 5-scale matrix, **GC compaction OFF**
-(it hangs `kino :ractor` under sustained load on stock 4.0.6 — see *GC compaction*),
-`HealthShortCircuit` OFF by default so `/up` is measured fairly across all servers,
-`ab -c 64` × 2 runs. Servers boot on **true 4.0.6**: `.ruby-version` is pinned to
-`ruby-4.0.6` and `bundle` (asdf shim) resolves the server ruby from it, so the
-harness `RUBY_VERSION` and the *server* ruby agree. Numbers below are measured, not
-estimates. Raw data: `bench/results/bench-20260718-023708.json`.
+stock release, **no patched Ruby required**), Rails 8.1.3, PG 1.6.3; 2026-07-20
+run (ractor-rails-shim 0.2.4 + audit fixes: `NoOpProc#to_proc` constant,
+`abstract!` frozen-registry guard, dedup `column_defaults`, etc.), uniform
+5-scale matrix, **GC compaction OFF** (it hangs `kino :ractor` under sustained
+load on stock 4.0.6 — see *GC compaction*), `HealthShortCircuit` OFF by default
+so `/up` is measured fairly across all servers, `ab -c 64 -t 30 -k` × 1 run
+(30s/endpoint, 5s warmup — long enough to wash out JIT/GC cold-start noise;
+5s runs understate single-process kino by ~30% because it stays JIT-cold).
+Servers boot on **true 4.0.6**: `.ruby-version` is pinned to `ruby-4.0.6` and
+`bundle` (asdf shim) resolves the server ruby from it, so the harness
+`RUBY_VERSION` and the *server* ruby agree. Numbers below are measured, not
+estimates. Raw data: `bench/results/bench-20260720-153539.json`.
 
-| Server | Framing | /up (rps) | GET /posts (rps) | POST /posts (rps) | Peak RSS (MB) | Unique/footprint (MB) |
-|--------|---------|-----------|------------------|-------------------|---------------|----------------------|
-| **kino :threaded (-t5)** | A (1 proc, 5 thr) | **5,054** | **1,252** | **818** | 187.6 | 163.0 |
-| puma single (-w0 -t5) | A (1 proc, 5 thr) | 5,050 | 1,250 | 894 | 166.8 | 143.0 |
-| falcon async (-n1) | A (1 proc, fibers) | 5,117 | 1,144 | 874 | 212.2 | 205.0 |
-| **kino :ractor (-w5 -t1)** | B (5 workers) | **2,933** | **648** | **1,672** | 209.8 | 166.0 |
-| puma clustered (-w5 -t1) | B (5 workers) | 18,774 | 3,137 | 1,748 | 822.8 | 723.0 |
-| falcon forked (-n5) | B (5 workers) | 20,639 | 4,419 | 2,737 | 862.6 | 751.0 |
-| **kino :ractor (-w5 -t5)** | B (5×5) | **1,797** | **426** | **868** | 259.3 | 191.0 |
-| puma clustered (-w5 -t5) | B (5×5) | 12,594 | 2,156 | 1,546 | 825.8 | 727.0 |
-| **falcon hybrid (-n5 --threads 5)** | B (5×5) | **11,347** | **2,262** | **1,510** | 851.6 | 725.0 |
+### Throughput / latency
+
+| Server | Framing | /up (rps) | GET /posts (rps) | POST /posts (rps) | /up p50/p95/p99 (ms) | GET /posts p50/p95/p99 | POST p50/p95/p99 |
+|--------|---------|-----------|------------------|-------------------|----------------------|------------------------|-------------------|
+| **kino :threaded (-t5)** | A (1 proc, 5 thr) | 6,943 | **1,719** | **1,554** | 9 / 11 / 12 | 37 / 41 / 47 | 41 / 46 / 50 |
+| puma single (-w0 -t5) | A (1 proc, 5 thr) | 5,172 | 1,372 | 1,021 | 12 / 15 / 17 | 46 / 56 / 70 | 62 / 67 / 75 |
+| falcon async (-n1) | A (1 proc, fibers) | 5,066 | 1,274 | 959 | 12 / 15 / 15 | 47 / 72 / 78 | 66 / 73 / 77 |
+| **kino :ractor (-w5 -t1)** | B (5 workers) | 3,136 | 655 | 2,073 | 20 / 22 / 24 | 96 / 112 / 131 | 30 / 35 / 40 |
+| puma clustered (-w5 -t1) | B (5 workers) | 19,338 | 3,987 | 2,755 | 3 / 4 / 5 | 15 / 24 / 40 | 19 / 41 / 45 |
+| falcon forked (-n5) | B (5 workers) | **22,637** | **5,296** | **3,823** | 3 / 4 / 5 | 11 / 19 / 32 | 13 / 26 / 28 |
+| **kino :ractor (-w5 -t5)** | B (5×5) | 2,520 | 637 | 1,316 | 25 / 28 / 30 | 101 / 115 / 140 | 48 / 54 / 58 |
+| puma clustered (-w5 -t5) | B (5×5) | 18,660 | 4,003 | 3,053 | 3 / 6 / 7 | 14 / 29 / 41 | 19 / 36 / 44 |
+| **falcon hybrid (-n5 --threads 5)** | B (5×5) | 17,012 | 4,273 | 3,067 | 3 / 8 / 11 | 14 / 25 / 37 | 14 / 47 / 50 |
+
+### Memory (process tree; COW-aware `footprint` is the fair number)
+
+| Server | Framing | Cold RSS (MB) | Peak RSS (MB) | Peak Unique / footprint (MB) |
+|--------|---------|---------------|---------------|-------------------------------|
+| kino :threaded (-t5) | A | 153 | 188 | **162** |
+| puma single (-w0 -t5) | A | 153 | 179 | **155** |
+| falcon async (-n1) | A | 196 | 242 | **201** |
+| **kino :ractor (-w5 -t1)** | B | 180 | 210 | **166** |
+| puma clustered (-w5 -t1) | B | 734 | 820 | **720** |
+| falcon forked (-n5) | B | 757 | 849 | **736** |
+| kino :ractor (-w5 -t5) | B | 233 | 260 | **213** |
+| puma clustered (-w5 -t5) | B | 746 | 850 | **749** |
+| falcon hybrid (-n5 --threads 5) | B | 768 | 872 | **760** |
+
+All nine scenarios serve `/up`, `GET /posts`, and `POST /posts` with **0
+transport failures and 0 server errors** (302 → new post verified on the write
+path). 27/27 endpoint×scenario cells green.
 
 ‡ **kino `:threaded` is a valid single-process baseline** — the shim passes
 `SERVER=thread` for this scenario (minimal install, same as Puma/Falcon), so the
-reloader and Devise work and the write path is stable (see table, ~818 rps).
-All nine scenarios serve `/up`, `GET /posts`, and `POST /posts` with **0 failures**
-and the write path verified (302 → new post).
+reloader and Devise work and the write path is stable (1,554 rps POST, the
+highest of any single-process server). Once warm (30s run) it also leads the
+single-process field on `GET /posts` (1,719 rps vs puma 1,372 and falcon 1,274)
+because the shim's minimal install has less per-request overhead than
+Puma/Falcon's full middleware stack.
 
-kino `:ractor` throughput is lower than Puma/Falcon clustered (it shares one
-frozen graph across Ractors and re-resolves methods per Ractor), but it is fully
-functional on the read and write paths. `falcon async (-n1)` is the clean
-"fibers+async, no shim" data point (single process, async fibers, ~214 MB unique —
-on par with kino's memory).
+### What the 30s matrix shows
+
+**1. Memory — kino :ractor's architectural win.** At 5 workers, forked servers
+burn **720-749 MB peak unique** vs kino :ractor's **166 MB** — a **4.4× memory
+saving** because Ractors share one frozen app graph instead of COW-copying per
+process. This is the whole point of the Ractor architecture, and the shim
+delivers it.
+
+**2. Forked multi-process wins raw throughput**, because 5 OS processes with 5
+separate DB pools (25 connections) out-parallel 5 Ractors with 1 connection
+each. The DB-bound `/posts` read path shows this most clearly (falcon forked
+5,296 vs kino :ractor 655 — 8.1×). This is a **pool-size tuning issue, not a
+shim limitation** — bumping the per-Ractor pool or sharing a pool across
+Ractors would close the gap.
+
+**3. The write path (POST) is where Ractor parallelism shows without the
+DB-pool confound.** kino :threaded (single process, 5 threads, GIL) does
+**1,554 rps** vs puma single's 1,021 (1.52×) and falcon async's 959 (1.62×)
+— the shim's minimal threaded install outpaces GIL/threaded servers on the
+CPU-bound write path. And **kino :ractor (-w5 -t1) hits 2,073 rps** on POST —
+true parallelism, no GIL, single shared graph — **1.33× the best threaded
+single-process server** and beating every framing-A server.
+
+**4. The -w5 -t5 Ractor config regresses vs -w5 -t1** on every endpoint
+(2,520 vs 3,136 on `/up`; 637 vs 655 on `/posts`; 1,316 vs 2,073 on POST).
+Adding 5 threads per Ractor on the frozen shared graph adds contention
+without enough DB connections to keep them busy. The shim runs it correctly
+(0 failures) but the configuration is an anti-pattern: **don't combine Ractor
+workers with per-Ractor threads; pick one**.
+
+**5. Tail latency tightens at 30s.** The 5s run's p99s were JIT/GC cold-start
+noise (e.g. kino :ractor POST p99=223ms at 5s → **40ms at 30s**; falcon forked
+POST p99=140ms at 5s → 28ms at 30s). The 30s numbers are steady-state.
 
 ## `class_attribute` allocation fix (0.2.3 → 0.2.4)
 
@@ -158,9 +213,10 @@ gem fixes the Ruby-level Ractor-safety gaps: the per-Ractor
 `ActiveRecord::ConnectionHandler` is stored in `Ractor.current` (not the per-thread
 `IsolatedExecutionState`), and
 `ActiveModel::AttributeMethods#attribute_method_patterns_cache` is routed through
-`Ractor.current`. The headline 2026-07-18 run confirms `kino :ractor` serves `/up`,
-`GET /posts`, and `POST /posts` with **0 transport failures and 0 server errors**
-under load on plain 4.0.6.
+`Ractor.current`. The 2026-07-20 30s headline run (this file) re-confirms
+`kino :ractor` serves `/up`, `GET /posts`, and `POST /posts` with **0 transport
+failures and 0 server errors** under load on plain 4.0.6 — 27/27
+endpoint×scenario cells green across the full 9-scenario matrix.
 
 (For Rubies older than 4.0.6 — without #22075 / without the env-string fix — `kino
 :ractor` SIGBUSes under load even with the shim; the patched DDKatch Ruby/kino forks

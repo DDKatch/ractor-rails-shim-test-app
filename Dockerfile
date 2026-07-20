@@ -3,7 +3,13 @@
 
 # This Dockerfile is designed for production, not development. Use with Kamal or build'n'run by hand:
 # docker build -t ractor-rails-shim-test-app .
-# docker run -d -p 80:80 -e RAILS_MASTER_KEY=<value from config/master.key> --name ractor-rails-shim-test-app ractor-rails-shim-test-app
+# docker run -d -p 80:80 -e RAILS_MASTER_KEY=<your master.key value> --name ractor-rails-shim-test-app ractor-rails-shim-test-app
+#
+# NOTE: this repo intentionally does NOT ship `config/master.key` or
+# `config/credentials.yml.enc` — nothing in the app reads credentials (all
+# documented runs use SECRET_KEY_BASE=dummy). For a real deployment,
+# regenerate both with `bin/rails credentials:edit` and supply the master key
+# via RAILS_MASTER_KEY at runtime.
 
 # For a containerized dev environment, see Dev Containers: https://guides.rubyonrails.org/getting_started_with_devcontainer.html
 

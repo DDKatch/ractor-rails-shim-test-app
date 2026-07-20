@@ -41,6 +41,18 @@
 
 # Ignore benchmark result artifacts.
 /bench/results/
+# IPS profiling dumps from benchmark bisects (large, regenerable).
+/bench/*.ips
+# Benchmark working notes / draft reports (keep bench.rb and the tracked
+# harness scripts; these are scratch).
+/bench/CONTINUE.md
+/bench/FINDINGS.md
+/bench/UPSTREAM_REPORT_DRAFT.md
+# Ad-hoc bisect / repro scripts kept locally for investigation; not part of
+# the tracked benchmark harness.
+/bench/load_bisect.rb
+/bench/ractor_load.rb
+/bench/verify_4.0.6.sh
 # Generated StackProf dumps / flamegraphs from the profiling harnesses.
 /results/
 

@@ -104,12 +104,6 @@ if mode == :ractor
   # forbidden outside the main Ractor) -> Ractor::IsolationError swallowed by
   # ActionDispatch as an empty session.
   Rails.application.env_config
-  # (holding secret_key_base / key_generator / cookie salts) is frozen into the
-  # shared graph. Without this, worker Ractors recompute env_config on first
-  # request and hit `Rails::Railtie::Configuration#@@options` (a class variable
-  # forbidden outside the main Ractor) -> Ractor::IsolationError swallowed by
-  # ActionDispatch as an empty session.
-  Rails.application.env_config
 
   # The shim deep-freezes the logger (incl. its SimpleFormatter), so the
   # logging/exception middlewares raise FrozenError while trying to log a worker
