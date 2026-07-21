@@ -9,7 +9,7 @@ gem "puma", ">= 5.0"
 gem "falcon"
 # Pin kino: the README requires the official kino 0.1.x gem; an unbounded
 # `gem "kino"` would happily pull a future 0.2 with breaking API changes.
-gem "kino", "~> 0.1.3"
+gem "kino", "~> 0.2.0"
 gem "devise", ">= 4.9"
 gem "kaminari", "~> 1.2"
 gem "tzinfo-data", platforms: %i[ windows jruby ]

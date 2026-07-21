@@ -182,19 +182,19 @@ GEM
       activerecord
       kaminari-core (= 1.2.2)
     kaminari-core (1.2.2)
-    kino (0.1.3-aarch64-linux)
+    kino (0.2.0-aarch64-linux)
       logger (>= 1.6)
       rack (>= 3.1)
-    kino (0.1.3-aarch64-linux-musl)
+    kino (0.2.0-aarch64-linux-musl)
       logger (>= 1.6)
       rack (>= 3.1)
-    kino (0.1.3-arm64-darwin)
+    kino (0.2.0-arm64-darwin)
       logger (>= 1.6)
       rack (>= 3.1)
-    kino (0.1.3-x86_64-linux)
+    kino (0.2.0-x86_64-linux)
       logger (>= 1.6)
       rack (>= 3.1)
-    kino (0.1.3-x86_64-linux-musl)
+    kino (0.2.0-x86_64-linux-musl)
       logger (>= 1.6)
       rack (>= 3.1)
     language_server-protocol (3.17.0.6)
@@ -411,7 +411,7 @@ DEPENDENCIES
   devise (>= 4.9)
   falcon
   kaminari (~> 1.2)
-  kino (~> 0.1.3)
+  kino (~> 0.2.0)
   msgpack (>= 1.7.0)
   pg (~> 1.4)
   propshaft
@@ -479,11 +479,11 @@ CHECKSUMS
   kaminari-actionview (1.2.2) sha256=1330f6fc8b59a4a4ef6a549ff8a224797289ebf7a3a503e8c1652535287cc909
   kaminari-activerecord (1.2.2) sha256=0dd3a67bab356a356f36b3b7236bcb81cef313095365befe8e98057dd2472430
   kaminari-core (1.2.2) sha256=3bd26fec7370645af40ca73b9426a448d09b8a8ba7afa9ba3c3e0d39cdbb83ff
-  kino (0.1.3-aarch64-linux) sha256=cd8b18527cf812746e571299706a7f8aaef958bc656c2dacf5ae16cabd08503b
-  kino (0.1.3-aarch64-linux-musl) sha256=8dd6888994b6501a8ee7e2eaa143d31b8b3e8dd35fc7da95d5eb2afd202f3c57
-  kino (0.1.3-arm64-darwin) sha256=bf5c81a8b5dd13d39d5bdb6d9ea9e7f094d186911b64519da607cec1ad38cb2e
-  kino (0.1.3-x86_64-linux) sha256=9a8057f02360fbd27d3d8738069832a324d309044f2f87eac4fd264f6498c033
-  kino (0.1.3-x86_64-linux-musl) sha256=fab0814b435078d1dc3ebf1efbaffb464651ed0304dafb0beaf03acd015c7224
+  kino (0.2.0-aarch64-linux) sha256=9745d6f162572c9b77b73ccf35c04ef904dd2c2bcbf6196ab79d70a8ab7b4234
+  kino (0.2.0-aarch64-linux-musl) sha256=060168906bf3b3c540e692dd1a0c44ba8aa060594e8f93a62345bc9b33064052
+  kino (0.2.0-arm64-darwin) sha256=1db158b0eb11ce8f7f7042b042c0cabb1644d653b1dc6b185e5cc6985ca8149d
+  kino (0.2.0-x86_64-linux) sha256=3d8bdcea83705c786d96bed4dc8aa45bef4964d9da7d23cc5010def3ccb47a76
+  kino (0.2.0-x86_64-linux-musl) sha256=ec3981bbd11d5958c82c41c8c73df6a1fd036ff3e7da9077af2004ef1b9b9ea1
   language_server-protocol (3.17.0.6) sha256=5ef2c0c138f8267e1bc631d3328347d354f96724b0af22f2c79516120443b7f0
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
   localhost (1.8.0) sha256=df7ea825b4f64949c588c17efac86bc47ddc4460d723778abe933b71759b2701
