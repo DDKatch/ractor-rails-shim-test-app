@@ -5,11 +5,18 @@ inside **`kino -m ractor`** (Ruby 4.0 Ractor-mode web server). It is a standard
 Rails 8.1 app — **Devise 5**, **Propshaft**, **Kaminari**, **PostgreSQL** — that
 exercises the full request path (view rendering, authenticated Devise
 sign-in/sign-out, CSRF issuance + validation, and DB-backed writes) from real
-worker Ractors.
+worker Ractors. **No patched Ruby or kino required** — official Ruby 4.0.6
+ships the frozen-iseq call-cache fix (#22075) and the cross-ractor env-string
+fix, so `kino -m ractor` runs on the upstream `kino` gem (0.1.3) as-is.
 
 This repo is the "does it actually work end-to-end" companion to the shim
-[ractor-rails-shim](https://github.com/DDKatch/ractor-rails-shim). See that
-project's `README.md` for the blocker map and the kino source patch, and
+[ractor-rails-shim](https://github.com/DDKatch/ractor-rails-shim) — a monkey-patch
+shim that reroutes Rails' class-level instance variable accessors through
+`ActiveSupport::IsolatedExecutionState`, which is Ractor-safe, letting a Rails
+app run in Ractor mode without forking Rails itself. It is a proof-of-concept /
+stopgap; the goal is for Rails to do this upstream, at which point the gem
+becomes a no-op and can be removed. See that project's `README.md` for the
+blocker map and the per-concern patch inventory, and
 [`BENCHMARKS.md`](./BENCHMARKS.md) for the full kino `:ractor` vs Puma vs
 Falcon benchmark analysis.
 
@@ -104,12 +111,14 @@ BENCH_DURATION=20 BENCH_CONCURRENCY=64 BENCH_RUNS=3 ruby bench/bench.rb
 Measured results are written as JSON to `bench/results/`.
 
 **kino `:ractor` is fully functional on both read and write paths** under
-sustained load. On official Ruby 4.0.6 with `ractor-rails-shim` 0.2.4, the whole
+sustained load. On official Ruby 4.0.6 with `ractor-rails-shim` 0.2.5, the whole
 matrix (`/up`, `GET /posts`, `POST /posts`) serves with **0 failures** — the
 frozen-iseq SIGBUS is fixed by the call-cache detach in 4.0.6 (#22075) and the
-env-string fix is also present in 4.0.6. See [`BENCHMARKS.md`](./BENCHMARKS.md)
-for the full 0-failure matrix and the *"No patched Ruby or kino required"*
-section.
+env-string fix is also present in 4.0.6. 0.2.5 additionally fixes a nil-sentinel
+storage bug in the IES-routed accessors (so `Foo.x = nil`/`false` no longer falls
+through to the default) and a `Ractor::IsolationError` when a worker Ractor
+reloads a cold AR schema. See [`BENCHMARKS.md`](./BENCHMARKS.md) for the full
+0-failure matrix and the *"No patched Ruby or kino required"* section.
 
 ### kino patch — no longer needed on Ruby 4.0.6
 
