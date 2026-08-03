@@ -172,10 +172,11 @@ investigation before drawing tight comparisons across the two tables. Raw data:
 ## GC compaction (kino :ractor)
 
 Compaction is **OFF** (Ruby 4.0.6 default — `GC.auto_compact` is `false`).
-Forcing `GC.auto_compact = true` was observed to **hang `kino :ractor`** under
-sustained `ab` load (server stops answering, `ab` completes 0 requests,
-`POST /posts` hits `Net::ReadTimeout`). Not yet re-verified on 0.2.5; the
-benchmark keeps it off.
+Forcing `GC.auto_compact = true` hangs `kino :ractor` under sustained load.
+Re-verified on 0.2.5 (2026-08-03): `/up` (no DB) completes at ~2,000 rps with
+0 failures, but the server silently hangs partway through `GET /posts` (DB
+read path) — stops responding, no crash, no error in the log. The benchmark
+keeps compaction off.
 
 ## Memory columns
 
