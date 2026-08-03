@@ -159,7 +159,14 @@ throughput. `/up` (no DB) is flat across pool sizes, confirming the DB layer is
 where the regression bites. **This is not pool starvation** — it's the opposite.
 The read path is bottlenecked by per-request allocation/GC cost under Ractor,
 and a larger pool only adds overhead. pool=50 segfaults the Ruby VM
-(`SIGSEGV` at `0x10`; crash report: `bench/pool50_segfault.ips`). Raw data:
+(`SIGSEGV` at `0x10`; crash report: `bench/pool50_segfault.ips`).
+
+Note: the pool sweep ran at `ab -t 15` (shorter duration) vs the headline
+matrix's `ab -t 30`. The pool=5 GET /posts number here (404 rps) is lower than
+the headline's 655 rps for the same w5-t1 config. This is partly duration
+(JIT/GC warmup) but the gap is wider than the ~30% JIT-cold effect seen on
+`/up`, suggesting run-to-run variance on the DB read path warrants
+investigation before drawing tight comparisons across the two tables. Raw data:
 `bench/results/pool-sweep-*.json` (pool=100 captured live, not persisted).
 
 ## GC compaction (kino :ractor)
