@@ -171,19 +171,11 @@ investigation before drawing tight comparisons across the two tables. Raw data:
 
 ## GC compaction (kino :ractor)
 
-The SIGBUS classes that made compaction unsafe are resolved in official Ruby 4.0.6
-(call-cache detach #22075 + env-string), so the earlier crash rationale is gone.
-Nonetheless the benchmark runs with compaction **OFF** (Ruby's default — `GC.auto_compact`
-is `false` on 4.0.6 and `config_ractor.ru` does not set it); the harness only passes
-`RUBY_GC_DISABLE_COMPACTION=0`, which *permits* but does not *enable* compaction.
-`DISABLE_COMPACTION=1` makes the default-off stance explicit (a no-op under the
-default).
-
+Compaction is **OFF** (Ruby 4.0.6 default — `GC.auto_compact` is `false`).
 Forcing `GC.auto_compact = true` was observed to **hang `kino :ractor`** under
-sustained `ab` load (the server stops answering, `ab` completes 0 requests,
-`POST /posts` hits `Net::ReadTimeout`). That observation predates this confirmation
-and needs to be re-verified on the current fix set before compaction can be
-considered safe to enable; until then the benchmark keeps it off.
+sustained `ab` load (server stops answering, `ab` completes 0 requests,
+`POST /posts` hits `Net::ReadTimeout`). Not yet re-verified on 0.2.5; the
+benchmark keeps it off.
 
 ## Memory columns
 
