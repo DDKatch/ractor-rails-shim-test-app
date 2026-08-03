@@ -14,7 +14,7 @@ class PostsController < ApplicationController
   # both endpoints side by side separates "Rails under Ractors" from that
   # per-request mutation cost.
   def index_plain
-    page = [params[:page].to_i, 1].max
+    page = [ params[:page].to_i, 1 ].max
     @posts = Post.order(created_at: :desc).limit(10).offset((page - 1) * 10)
   end
   def show
