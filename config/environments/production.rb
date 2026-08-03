@@ -9,6 +9,15 @@ Rails.application.configure do
   # Eager load code on boot for better performance and memory savings (ignored by Rake tasks).
   config.eager_load = true
 
+  # Rails 8.1 enables YJIT in production by default (config.yjit = !local?).
+  # Under kino :ractor on stock Ruby 4.0.6, YJIT's per-request method-table
+  # barriers and call-cache invalidation stall all worker Ractors, so the
+  # YJIT-off path is dramatically faster (yaroslav's issue #6 measurement:
+  # /up at -w5 went 2,800 -> 13,269 rps). The bench harness sets
+  # BENCH_YJIT_OFF=1 to disable YJIT for a scenario; when unset YJIT stays
+  # on (the Rails default), so both can be A/B compared from one codebase.
+  config.yjit = false if ENV["BENCH_YJIT_OFF"]
+
   # Full error reports are disabled.
   config.consider_all_requests_local = false
 

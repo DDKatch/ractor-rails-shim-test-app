@@ -10,6 +10,10 @@ require "socket"
 # (ApacheBench) against three endpoints:
 #   /up            GET, no DB        (server/dispatch overhead)
 #   /posts         GET, DB + render  (realistic read path)
+#   /posts_plain   GET, DB + render  (same page, limit/offset instead of
+#                                     Kaminari; isolates Kaminari's per-request
+#                                     Module.new+include+extend, which stalls
+#                                     all Ractors via method-table barriers)
 #   POST /posts    DB write + 302    (write path; requires signed-in session)
 #
 # Two framings (user chose "both"):
@@ -338,7 +342,7 @@ def write_results(results, cfg)
       framing: r[:sc][:framing],
       mem_cold: r[:mem_cold],
       mem_peak: r[:mem_peak],
-      up: r[:up], posts: r[:posts], post: r[:post],
+      up: r[:up], posts: r[:posts], posts_plain: r[:posts_plain], post: r[:post],
       errors: r[:errors],
     }
   end
@@ -465,13 +469,14 @@ def main
     puts "\n=== #{sc[:name]} [framing #{sc[:framing]}] ==="
     cleanup_port(PORT)
     pid = spawn(sc[:env], *sc[:cmd], err: "/tmp/#{sc[:pgrep]}_bench.log")
-    r = { sc: sc, rss: nil, up: nil, posts: nil, post: nil, errors: {} }
+    r = { sc: sc, rss: nil, up: nil, posts: nil, posts_plain: nil, post: nil, errors: {} }
     begin
       wait_ready(PORT, timeout: sc[:wait_timeout] || 90)
       # warmup: a real ab burst hits every worker so per-worker caches are
       # populated before we measure (a single GET only warms one worker).
       warmup_ab(PORT, "/up")
       warmup_ab(PORT, "/posts")
+      warmup_ab(PORT, "/posts_plain")
 
       pids = server_pids(PORT, pid)
       r[:mem_cold] = sample_memory(pids)
@@ -493,6 +498,15 @@ def main
       rescue StandardError => e
         r[:errors][:posts] = "#{e.class}: #{e.message}"
         puts "  /posts (GET)   FAILED: #{r[:errors][:posts]}"
+      end
+
+      begin
+        r[:posts_plain] = measure_endpoint(PORT, "/posts_plain")
+        r[:mem_peak] = peak_memory(pids, r[:mem_peak])
+        puts "  /posts_plain   rps=#{r[:posts_plain][:rps]&.round(1)} p50=#{r[:posts_plain][:p50]} p95=#{r[:posts_plain][:p95]} p99=#{r[:posts_plain][:p99]} failed=#{r[:posts_plain][:failed]} (n=#{r[:posts_plain][:runs]})"
+      rescue StandardError => e
+        r[:errors][:posts_plain] = "#{e.class}: #{e.message}"
+        puts "  /posts_plain   FAILED: #{r[:errors][:posts_plain]}"
       end
 
       begin
@@ -548,10 +562,10 @@ def print_report(results)
   puts "\n\n# Benchmark results\n"
   puts "Date: #{cfg[:date]} | Ruby: #{cfg[:ruby]} | Rails: #{cfg[:rails]} | ab: #{cfg[:ab]}"
   puts "Concurrency: #{CONCURRENCY} | Duration: #{DURATION}s | Warmup: #{WARMUP_DURATION}s | Runs/endpoint: #{RUNS} | Keepalive: on | Cores: #{NPROC}"
-  puts "Endpoints: /up (no DB), /posts (GET, DB+render), POST /posts (DB write+302)\n"
+  puts "Endpoints: /up (no DB), /posts (GET, DB+render), /posts_plain (GET, DB+render, no Kaminari), POST /posts (DB write+302)\n"
 
-  [:up, :posts, :post].each do |ep|
-    label = { up: "/up (GET, no DB)", posts: "/posts (GET, DB)", post: "POST /posts (write)" }[ep]
+  [:up, :posts, :posts_plain, :post].each do |ep|
+    label = { up: "/up (GET, no DB)", posts: "/posts (GET, DB)", posts_plain: "/posts_plain (GET, DB, no Kaminari)", post: "POST /posts (write)" }[ep]
     puts "## #{label}\n"
     puts "| Server | Framing | Req/s | p50 (ms) | p95 (ms) | p99 (ms) | Failed (transport) |"
     puts "|--------|---------|------|----------|----------|----------|---------------------|"

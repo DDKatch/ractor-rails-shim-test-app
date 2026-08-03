@@ -5,6 +5,18 @@ class PostsController < ApplicationController
   def index
     @posts = Post.order(created_at: :desc).page(params[:page] || 1).per(10)
   end
+
+  # Same read path as #index, paginated with plain limit/offset instead of
+  # Kaminari. Kaminari's page scope runs Module.new + include + extending!
+  # on every call; those request-time method-table mutations are cheap on a
+  # single-Ractor server but cost a stop-all-Ractors barrier plus a global
+  # method-cache invalidation when worker Ractors run in parallel. Benching
+  # both endpoints side by side separates "Rails under Ractors" from that
+  # per-request mutation cost.
+  def index_plain
+    page = [params[:page].to_i, 1].max
+    @posts = Post.order(created_at: :desc).limit(10).offset((page - 1) * 10)
+  end
   def show
   end
   def new

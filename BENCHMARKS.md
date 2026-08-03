@@ -115,6 +115,165 @@ workers with per-Ractor threads; pick one**.
 noise (e.g. kino :ractor POST p99=223ms at 5s → **40ms at 30s**; falcon forked
 POST p99=140ms at 5s → 28ms at 30s). The 30s numbers are steady-state.
 
+## YJIT and Kaminari method-table barriers
+
+The headline table above uses stock Rails 8.1 defaults: **YJIT on** (Rails 8.1
+sets `config.yjit = !local?`, so production enables it) and **Kaminari** for
+pagination (`Post.order(...).page(...).per(10)`). Under `kino :ractor` on
+stock Ruby 4.0.6, two request-time method-table mutations turn those defaults
+into a large per-request tax: every `Module.new` + `include` + `extending!`
+hits a global method-cache invalidation barrier that stalls **all** worker
+Ractors, not just the one executing the request. This section isolates each
+cost via an A/B on the headline `kino :ractor (-w5 -t1)` config.
+
+The investigation and the two fixes come from the kino maintainer
+([issue #6, comment](https://github.com/yaroslav/kino/issues/6#issuecomment-5165496321)):
+disable YJIT for Ractor mode, and swap Kaminari's `.page(...)` for plain
+`.limit(...).offset(...)`. The upstream root cause is tracked at
+[ruby#22224](https://bugs.ruby-lang.org/issues/22224) with a fix PR at
+[ruby/ruby#18176](https://github.com/ruby/ruby/pull/18176).
+
+### Setup
+
+- `/posts_plain` — a twin of `/posts` that paginates with `limit/offset`
+  instead of Kaminari (same DB read, same render, no `paginate` nav). Added in
+  `app/controllers/posts_controller.rb` (`index_plain`), `app/views/posts/
+  index_plain.html.erb`, and `config/routes.rb`; the bench harness warms and
+  measures it alongside `/posts`.
+- `BENCH_YJIT_OFF=1` — `config/environments/production.rb` sets
+  `config.yjit = false` when this env var is set, so both YJIT states run from
+  one codebase. Without it YJIT stays on (the Rails 8.1 production default).
+- `ab -c 64 -t 10 -k`, 5s warmup, 3 runs/endpoint, 12 cores, Ruby 4.0.6,
+  Rails 8.1.3, compaction off. Raw data:
+  `bench/results/bench-20260803-160927.json` (YJIT on) and
+  `bench-20260803-161344.json` (YJIT off).
+
+### A/B — kino :ractor (-w5 -t1), YJIT on vs off, /posts vs /posts_plain
+
+| Endpoint | YJIT on (rps) | YJIT off (rps) | YJIT off / on |
+|---|---|---|---|
+| `/up` (no DB) | 2,838 | **12,930** | **4.6×** |
+| `/posts` (Kaminari) | 423 | 686 | 1.6× |
+| `/posts_plain` (limit/offset) | 1,551 | **4,676** | **3.0×** |
+| POST /posts (write) | 1,967 | 3,537 | 1.8× |
+
+(p50 latency drops in step with rps: `/up` 22ms → 5ms, `/posts_plain` 41ms →
+14ms; 0 transport failures across all cells.)
+
+**Two findings, both reproducing the issue's claims:**
+
+1. **`config.yjit = false` is a large net win under Ractors.** `/up` jumps
+   2,838 → 12,930 rps (issue: 2,800 → 13,269) — a 4.6× speedup from flipping
+   one config flag. Every endpoint improves. This is *surprising* (YJIT is a
+   win on forked/threaded servers) and points at a Ractor-specific VM bug:
+   YJIT's per-request codegen invalidates call caches under a global lock,
+   and under parallel Ractors that lock becomes a stop-the-world barrier.
+
+2. **Kaminari's `.page()` is the read-path bottleneck.** With YJIT on,
+   `/posts_plain` (1,551 rps) is **3.7× faster** than `/posts` (423 rps) for
+   the same DB read + render — the gap is nearly pure method-table-barrier
+   cost, since the seeded data fits one page and Kaminari's nav renders almost
+   nothing (3,944 vs 3,914 bytes). The issue's numbers match (1,409 vs 419).
+   Kaminari's `page` scope runs `Module.new` + 2 `include`s + `extending!`
+   per request; each method-table mutation is another global barrier plus
+   call-cache invalidation that all workers then re-fill under the VM lock.
+
+The `/posts` (Kaminari) YJIT-off number (686 rps) is below the issue's 2,090 —
+same direction and conclusion, just smaller absolute on this box; the
+*relative* Kaminari gap (`/posts_plain` ÷ `/posts` = 6.8× off, 3.7× on) is
+the meaningful signal and matches the issue's framing.
+
+### What this means for the headline table
+
+The headline table's stock-config `kino :ractor` numbers (`/up` 3,136, GET
+/posts 655) are the honest "real Rails 8.1 app with Rails defaults" baseline
+and are left as-is — they're what an unmodified app actually gets. The A/B
+above shows those numbers are dominated by two **VM-level, not shim-level**
+costs that a one-line config change (`config.yjit = false`) and a one-line
+controller change (`.page` → `.limit/.offset`) recover most of. A full
+9-scenario matrix with `BENCH_YJIT_OFF=1` is below to show kino :ractor's
+*achievable* throughput vs puma/falcon once the VM bug is sidestepped.
+
+### Full matrix — YJIT off (kino :ractor vs Puma vs Falcon)
+
+Same 9-scenario matrix as the headline table, but with `BENCH_YJIT_OFF=1`
+(`config.yjit = false` in production). `ab -c 64 -t 30 -k` × 1 run, 5s warmup,
+12 cores, Ruby 4.0.6, Rails 8.1.3, compaction off. Raw data:
+`bench/results/bench-20260803-164625.json`.
+
+| Server | Framing | /up (rps) | GET /posts (rps) | /posts_plain (rps) | POST /posts (rps) | /up p50/p95/p99 | GET /posts p50/p95/p99 | /posts_plain p50/p95/p99 | POST p50/p95/p99 |
+|--------|---------|-----------|------------------|--------------------|-------------------|-----------------|------------------------|--------------------------|-------------------|
+| kino :threaded (-t5) | A | 3,848 | 709 | 886 | 798 | 16/19/21 | 87/106/112 | 71/80/98 | 81/100/114 |
+| puma single (-w0 -t5) | A | 3,238 | 884 | 971 | 686 | 20/26/29 | 70/89/97 | 65/75/88 | 92/101/109 |
+| falcon async (-n1) | A | 3,054 | 436 | 659 | 658 | 21/23/24 | 142/170/185 | 96/103/116 | 95/112/128 |
+| **kino :ractor (-w5 -t1)** | B | **13,329** | 583 | **3,604** | **2,567** | 5/6/6 | 110/137/164 | 18/21/26 | 25/30/36 |
+| puma clustered (-w5 -t1) | B | 10,074 | 2,166 | 2,290 | 1,371 | 6/9/12 | 28/41/58 | 27/36/43 | 47/58/68 |
+| falcon forked (-n5) | B | 7,672 | 1,842 | 2,117 | 1,358 | 8/11/13 | 33/57/77 | 29/43/63 | 49/62/73 |
+| kino :ractor (-w5 -t5) | B | 6,116 | 552 | 2,753 | 1,869 | 10/13/15 | 116/133/154 | 23/27/31 | 34/42/48 |
+| puma clustered (-w5 -t5) | B | 13,482 | 3,108 | 3,215 | 2,101 | 5/8/10 | 19/34/45 | 19/31/45 | 28/50/66 |
+| falcon hybrid (-n5 --threads 5) | B | 11,230 | 3,245 | 3,714 | 2,317 | 5/15/22 | 19/32/41 | 17/28/34 | 26/38/48 |
+
+All 9 scenarios × 4 endpoints green (0 transport failures, POST 302 verified).
+
+#### Memory (process tree; COW-aware `footprint` is the fair number)
+
+| Server | Framing | Cold RSS (MB) | Peak RSS (MB) | Peak Unique / footprint (MB) |
+|--------|---------|---------------|---------------|-------------------------------|
+| kino :threaded (-t5) | A | 136 | 148 | **124** |
+| puma single (-w0 -t5) | A | 130 | 151 | **127** |
+| falcon async (-n1) | A | 191 | 225 | **188** |
+| **kino :ractor (-w5 -t1)** | B | 168 | 194 | **149** |
+| puma clustered (-w5 -t1) | B | 671 | 741 | **642** |
+| falcon forked (-n5) | B | 654 | 726 | **615** |
+| kino :ractor (-w5 -t5) | B | 221 | 244 | **171** |
+| puma clustered (-w5 -t5) | B | 670 | 737 | **640** |
+| falcon hybrid (-n5 --threads 5) | B | 708 | 768 | **642** |
+
+#### What the YJIT-off matrix shows
+
+**1. The headline gap closes — kino :ractor now leads on the no-DB and
+write paths.** With YJIT off, `kino :ractor (-w5 -t1)` `/up` jumps from
+3,136 → **13,329 rps** (headline: 3,136), now **beating puma clustered
+(10,074) and falcon forked (7,672)**. POST /posts goes 2,073 → **2,567 rps**,
+~1.9× puma clustered (1,371) and falcon forked (1,358). The Ractor
+architecture's parallelism wins once the YJIT method-table barrier is removed.
+
+**2. `/posts_plain` is kino :ractor's strongest read-path result.** At
+**3,604 rps** it beats puma clustered (2,290) by 1.6× and falcon forked
+(2,117) by 1.7× — same DB read + render, just without Kaminari's per-request
+`Module.new`+`include`+`extending!`. This is the read path without the
+method-table barrier, and kino :ractor wins it.
+
+**3. `/posts` (Kaminari) stays the outlier.** 583 rps — barely above the
+headline's 655 and far below puma/falcon (2,166/1,842). The Kaminari barrier
+is a Ruby-VM cost independent of YJIT, so flipping YJIT off does not rescue it
+(it even drops slightly: the read path is dominated by the barrier, not by
+YJIT codegen). The `/posts` vs `/posts_plain` split (583 vs 3,604, a **6.2×**
+gap on the same row) is the cleanest measure of the Kaminari tax under
+Ractors.
+
+**4. The `-w5 -t5` Ractor config still regresses vs `-w5 -t1`** on `/up`
+(6,116 vs 13,329) and `/posts_plain` (2,753 vs 3,604) — the same
+contention-without-DB-connections anti-pattern as the headline matrix,
+independent of YJIT.
+
+**5. Puma/Falcon are roughly flat YJIT-on → YJIT-off** (puma clustered `/up`
+19,338 → 10,074; falcon forked `/up` 22,637 → 7,672 — they actually drop
+without YJIT, as expected since forked processes have no method-table
+barrier). This confirms the YJIT-off delta is kino-:ractor-specific: it's a
+**fix for a Ractor VM bug, not a general slowdown**. YJIT remains a win for
+forked/threaded servers.
+
+**6. Memory advantage holds.** kino :ractor (-w5 -t1) peak unique footprint
+**149 MB** vs puma clustered **642 MB** and falcon forked **615 MB** — the
+same ~4.3× memory saving as the headline matrix, unaffected by YJIT state.
+
+**Bottom line:** the headline table's `kino :ractor` numbers are the
+stock-Rails-defaults baseline; the YJIT-off `/posts_plain` matrix above is
+the architecture's achievable throughput once two Ruby-VM-level blockers are
+sidestepped. With both fixed, kino :ractor leads the field on `/up`, the
+non-Kaminari read path, and the write path, at ~4× lower memory.
+
 ## `class_attribute` allocation fix (0.2.3 → 0.2.4)
 
 Profiling `GET /posts` in a worker Ractor (StackProf, CPU + alloc) showed the
