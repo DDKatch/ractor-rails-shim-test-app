@@ -33,7 +33,10 @@ load on stock 4.0.6 — see *GC compaction*), `HealthShortCircuit` OFF by defaul
 so `/up` is measured fairly across all servers, `ab -c 64 -t 30 -k` × 1 run
 (30s/endpoint, 5s warmup — long enough to wash out JIT/GC cold-start noise;
 5s runs understate single-process kino by ~30% because it stays JIT-cold).
-Servers boot on **true 4.0.6**: `.ruby-version` is pinned to `ruby-4.0.6` and
+**DB pool: 5** (`config/database.yml` `pool: 5`, the Rails default — each Ractor
+gets its own pool of 5, each forked worker gets its own pool of 5; a pool sweep
+1→5→25→100 showed GET /posts degrades monotonically with larger pools, see
+*Pool sweep*). Servers boot on **true 4.0.6**: `.ruby-version` is pinned to `ruby-4.0.6` and
 `bundle` (asdf shim) resolves the server ruby from it, so the harness
 `RUBY_VERSION` and the *server* ruby agree. Numbers below are measured, not
 estimates. Raw data: `bench/results/bench-20260720-153539.json`.
@@ -137,6 +140,27 @@ The remaining `GET /posts` CPU cost is app-level: GC ~27%, PG ~25%,
 `Random.urandom` ~11% (per-request CSRF/session token — cacheable),
 `File.file?` ~6% (asset/path resolver — fixable via asset precompile + path
 cache).
+
+## Pool sweep (kino :ractor, w5-t1)
+
+The headline run uses `pool: 5` (the Rails default). A sweep of per-Ractor pool
+sizes on the GET /posts read path (`ab -c 64 -t 15 -k`, w5-t1, compaction off):
+
+| Pool | GET /posts (rps) | /up (rps) | POST (rps) |
+|------|-------------------|-----------|------------|
+| 1    | 425              | 3,222     | 2,287      |
+| 5    | 404              | 3,196     | 2,310      |
+| 25   | 301              | 3,241     | 2,294      |
+| 100  | 101              | —         | —          |
+
+GET /posts degrades monotonically as pool grows: more connections per Ractor
+means more GC pressure and cross-Ractor coordination overhead, not more
+throughput. `/up` (no DB) is flat across pool sizes, confirming the DB layer is
+where the regression bites. **This is not pool starvation** — it's the opposite.
+The read path is bottlenecked by per-request allocation/GC cost under Ractor,
+and a larger pool only adds overhead. pool=50 segfaults the Ruby VM
+(`SIGSEGV` at `0x10`; crash report: `bench/pool50_segfault.ips`). Raw data:
+`bench/results/pool-sweep-*.json` (pool=100 captured live, not persisted).
 
 ## GC compaction (kino :ractor)
 
