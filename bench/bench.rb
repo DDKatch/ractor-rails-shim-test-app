@@ -173,6 +173,18 @@ if (filter = ENV["BENCH_SCENARIO"])
   raise "no scenarios matched BENCH_SCENARIO=#{filter.inspect}" if SCENARIOS.empty?
 end
 
+# Per-server YJIT toggle: BENCH_KINO_YJIT_OFF=1 injects BENCH_YJIT_OFF=1 only
+# into kino :ractor scenarios, leaving puma/falcon at the Rails production
+# default (YJIT on). Contrast with BENCH_YJIT_OFF=1, which is global (applies
+# to all servers). Used to compare kino :ractor's achievable throughput
+# (YJIT barrier removed) against puma/falcon at their YJIT-on best.
+if ENV["BENCH_KINO_YJIT_OFF"]
+  SCENARIOS.each do |sc|
+    next unless sc[:name].include?("kino :ractor")
+    sc[:env] = sc[:env].merge("BENCH_YJIT_OFF" => "1")
+  end
+end
+
 # --- helpers ---------------------------------------------------------------
 def sh(*cmd)
   system(*cmd)
