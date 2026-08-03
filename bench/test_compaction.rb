@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
+
 # Re-verify whether GC.auto_compact = true hangs kino :ractor under load.
 # Boots the app with compaction enabled in each worker Ractor, then runs ab.
 require "net/http"
@@ -20,14 +21,14 @@ ENV2 = {
   "OBJC_DISABLE_INITIALIZE_FORK_SAFETY" => "YES",
   "KINO_MODE" => "ractor",
   "BENCHMARK_STATS" => "1",
-  "RUBY_GC_DISABLE_COMPACTION" => "0",
+  "RUBY_GC_DISABLE_COMPACTION" => "0"
 }
 
 # Patch WorkerApp to enable compaction in each worker, then load the rackup.
 # We use a custom rackup that wraps config_ractor.ru.
 RACKUP = File.expand_path("config_compaction_test.ru", APP)
-CMD = ["bundle", "exec", "kino", "-m", "ractor", "-w", "5", "-t", "1",
-       "-p", PORT.to_s, "-C", "kino.rb", RACKUP]
+CMD = [ "bundle", "exec", "kino", "-m", "ractor", "-w", "5", "-t", "1",
+       "-p", PORT.to_s, "-C", "kino.rb", RACKUP ]
 
 def wait_ready(port, timeout: 90)
   deadline = Time.now + timeout
@@ -44,9 +45,9 @@ end
 def check_alive(port)
   begin
     r = Net::HTTP.get_response("127.0.0.1", "/up", port)
-    return r.code == "200"
+    r.code == "200"
   rescue StandardError
-    return false
+    false
   end
 end
 

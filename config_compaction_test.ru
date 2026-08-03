@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 # Test rackup: wraps config_ractor.ru but patches WorkerApp to enable
 # GC.auto_compact = true inside each worker Ractor's setup_once!.
 # Used to re-verify whether compaction still hangs kino :ractor on 0.2.5.
