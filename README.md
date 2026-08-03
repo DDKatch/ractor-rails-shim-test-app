@@ -7,7 +7,7 @@ exercises the full request path (view rendering, authenticated Devise
 sign-in/sign-out, CSRF issuance + validation, and DB-backed writes) from real
 worker Ractors. **No patched Ruby or kino required** — official Ruby 4.0.6
 ships the frozen-iseq call-cache fix (#22075) and the cross-ractor env-string
-fix, so `kino -m ractor` runs on the upstream `kino` gem (0.1.3) as-is.
+fix, so `kino -m ractor` runs on the upstream `kino` gem (0.2.1) as-is.
 
 This repo is the "does it actually work end-to-end" companion to the shim
 [ractor-rails-shim](https://github.com/DDKatch/ractor-rails-shim) — a monkey-patch
@@ -28,7 +28,7 @@ Falcon benchmark analysis.
   without the DDKatch patched Ruby/kino forks.
 - **PostgreSQL** (use the `pg` gem — `sqlite3` is **ractor-unsafe** and raises
   `Ractor::UnsafeError`)
-- The official **`kino` gem (0.1.3)** — works as-is on 4.0.6; no fork or patch.
+- The official **`kino` gem (0.2.1)** — works as-is on 4.0.6; no fork or patch.
 - **macOS fork-safety:** set `OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES` in the
   environment whenever you run puma *clustered* or falcon *forked* (they `fork()`
   and crash under load on macOS otherwise).
@@ -126,7 +126,7 @@ reloads a cold AR schema. See [`BENCHMARKS.md`](./BENCHMARKS.md) for the full
 `Ractor::IsolationError` / SIGBUS under load. That fix (per-ractor
 `thread_local!` caches) **ships in official Ruby 4.0.6**, so on 4.0.6 you do
 **not** need to build or install a patched `kino` — the upstream `kino` gem
-(0.1.3) works as-is.
+(0.2.1) works as-is.
 
 For reference only (pre-4.0.6 Rubies): the patched build lived in the
 [DDKatch/kino](https://github.com/DDKatch/kino) (`ractor-per-ractor-env-cache`

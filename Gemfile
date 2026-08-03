@@ -7,8 +7,8 @@ gem "tailwindcss-rails"
 gem "pg", "~> 1.4"
 gem "puma", ">= 5.0"
 gem "falcon"
-# Pin kino: the README requires the official kino 0.1.x gem; an unbounded
-# `gem "kino"` would happily pull a future 0.2 with breaking API changes.
+# Pin kino: the README requires the official kino 0.2.x gem; an unbounded
+# `gem "kino"` would happily pull a future 0.3 with breaking API changes.
 gem "kino", "~> 0.2.1"
 gem "devise", ">= 4.9"
 gem "kaminari", "~> 1.2"
