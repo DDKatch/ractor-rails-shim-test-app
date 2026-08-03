@@ -219,36 +219,3 @@ limitation):
    process title, so `pkill -f` missed stale servers and `wait_port_free`
    timed out, aborting the whole run. Now the harness kills listeners + the pid
    tree and rescues the wait.
-
-## No patched Ruby or kino required on official 4.0.6
-
-`kino :ractor` needs two SIGBUS fixes; both are resolved in **official Ruby 4.0.6**
-(the headline 2026-07-18 run used the committed Gemfile.lock — official `kino`
-0.1.3 + `ractor-rails-shim` 0.2.5 — and completed with **0 failures**):
-
-1. **Class #2 — frozen-iseq call-cache SIGBUS** (`vm_ci_hash` under worker GC
-   mark, #22075): `rb_iseq_detach_call_caches` detaches an iseq's call caches from
-   the global `vm->ci_table` and invalidates them when the iseq is shared across
-   Ractors, so workers re-resolve methods fresh instead of dereferencing dangling
-   callinfo pointers. The earlier patched Ruby fork
-   [DDKatch/ruby](https://github.com/DDKatch/ruby) (`ractor-detach-call-caches`)
-   is now **obsolete** — its fix landed in core 4.0.6.
-2. **Class #1 — cross-ractor env-string SIGBUS** (`env_strings`
-   `Opaque<RString>`): also resolved in official 4.0.6; the earlier patched `kino`
-   fork [DDKatch/kino](https://github.com/DDKatch/kino) (`ractor-per-ractor-env-cache`)
-   is **obsolete**.
-
-**Net result: `kino :ractor` runs on official Ruby 4.0.6 + official `kino` 0.1.3 +
-`ractor-rails-shim` 0.2.5 — no patched Ruby, no patched kino.** The `ractor-rails-shim`
-gem fixes the Ruby-level Ractor-safety gaps: the per-Ractor
-`ActiveRecord::ConnectionHandler` is stored in `Ractor.current` (not the per-thread
-`IsolatedExecutionState`), and
-`ActiveModel::AttributeMethods#attribute_method_patterns_cache` is routed through
-`Ractor.current`. The 2026-07-20 30s headline run (this file) re-confirms
-`kino :ractor` serves `/up`, `GET /posts`, and `POST /posts` with **0 transport
-failures and 0 server errors** under load on plain 4.0.6 — 27/27
-endpoint×scenario cells green across the full 9-scenario matrix.
-
-(For Rubies older than 4.0.6 — without #22075 / without the env-string fix — `kino
-:ractor` SIGBUSes under load even with the shim; the patched DDKatch Ruby/kino forks
-are the escape hatch there.)
