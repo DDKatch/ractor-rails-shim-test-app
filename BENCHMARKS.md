@@ -26,7 +26,7 @@ cd ractor-rails-shim-test-app && ruby bench/bench.rb
 
 12 cores, macOS, **official Ruby 4.0.6** (`4.0.6` 2026-07-14, `03b6d3f889` — the
 stock release, **no patched Ruby required**), Rails 8.1.3, PG 1.6.3; 2026-07-20
-run (ractor-rails-shim 0.2.4 + audit fixes: `NoOpProc#to_proc` constant,
+run (ractor-rails-shim 0.2.5 + audit fixes: `NoOpProc#to_proc` constant,
 `abstract!` frozen-registry guard, dedup `column_defaults`, etc.), uniform
 5-scale matrix, **GC compaction OFF** (it hangs `kino :ractor` under sustained
 load on stock 4.0.6 — see *GC compaction*), `HealthShortCircuit` OFF by default
@@ -193,7 +193,7 @@ limitation):
 
 `kino :ractor` needs two SIGBUS fixes; both are resolved in **official Ruby 4.0.6**
 (the headline 2026-07-18 run used the committed Gemfile.lock — official `kino`
-0.1.3 + `ractor-rails-shim` 0.2.4 — and completed with **0 failures**):
+0.1.3 + `ractor-rails-shim` 0.2.5 — and completed with **0 failures**):
 
 1. **Class #2 — frozen-iseq call-cache SIGBUS** (`vm_ci_hash` under worker GC
    mark, #22075): `rb_iseq_detach_call_caches` detaches an iseq's call caches from
@@ -208,7 +208,7 @@ limitation):
    is **obsolete**.
 
 **Net result: `kino :ractor` runs on official Ruby 4.0.6 + official `kino` 0.1.3 +
-`ractor-rails-shim` 0.2.4 — no patched Ruby, no patched kino.** The `ractor-rails-shim`
+`ractor-rails-shim` 0.2.5 — no patched Ruby, no patched kino.** The `ractor-rails-shim`
 gem fixes the Ruby-level Ractor-safety gaps: the per-Ractor
 `ActiveRecord::ConnectionHandler` is stored in `Ractor.current` (not the per-thread
 `IsolatedExecutionState`), and

@@ -27,7 +27,7 @@ class ShareableInput
   def flush; end
 end
 
-def shareable_env(path = "/posts")
+def shareable_env(path = ENV["PROFILE_PATH"] || "/posts")
   e = Rack::MockRequest.env_for(path)
   e["rack.input"]  = ShareableInput.new
   e["rack.errors"] = ShareableInput.new
