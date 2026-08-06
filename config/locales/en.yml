@@ -1,31 +1,100 @@
-# Files in the config/locales directory are used for internationalization and
-# are automatically loaded by Rails. If you want to use locales other than
-# English, add the necessary files in this directory.
-#
-# To use the locales, use `I18n.t`:
-#
-#     I18n.t "hello"
-#
-# In views, this is aliased to just `t`:
-#
-#     <%= t("hello") %>
-#
-# To use a different locale, set it with `I18n.locale`:
-#
-#     I18n.locale = :es
-#
-# This would use the information in config/locales/es.yml.
-#
-# To learn more about the API, please read the Rails Internationalization guide
-# at https://guides.rubyonrails.org/i18n.html.
-#
-# Be aware that YAML interprets the following case-insensitive strings as
-# booleans: `true`, `false`, `on`, `off`, `yes`, `no`. Therefore, these strings
-# must be quoted to be interpreted as strings. For example:
-#
-#     en:
-#       "yes": yup
-#       enabled: "ON"
-
 en:
-  hello: "Hello world"
+  categories:
+    created: "Category was successfully created."
+    updated: "Category was successfully updated."
+    destroyed: "Category was successfully destroyed."
+  comments:
+    created: "Comment was successfully created."
+    updated: "Comment was successfully updated."
+    destroyed: "Comment was successfully destroyed."
+    create_failed: "Failed to create comment."
+  posts:
+    created: "Post created."
+    updated: "Post updated."
+    destroyed: "Post deleted."
+  shared:
+    nav_home: "Home"
+    nav_posts: "Posts"
+    nav_categories: "Categories"
+    sign_in: "Sign In"
+    sign_up: "Sign Up"
+    sign_out: "Sign Out"
+    profile: "Profile"
+    search_placeholder: "Search posts..."
+    back: "Back"
+    edit: "Edit"
+    delete: "Delete"
+    confirm_delete: "Are you sure?"
+  date:
+    formats:
+      default: "%Y-%m-%d"
+      long: "%B %d, %Y"
+      short: "%b %d"
+  time:
+    formats:
+      default: "%Y-%m-%d %H:%M"
+      long: "%B %d, %Y %I:%M %p"
+      short: "%b %d %H:%M"
+  helpers:
+    submit:
+      post:
+        create: "Create Post"
+        update: "Update Post"
+      category:
+        create: "Create Category"
+        update: "Update Category"
+      comment:
+        create: "Post Comment"
+        update: "Update Comment"
+  number:
+    currency:
+      unit: "$"
+      format: "%u%n"
+      precision: 2
+      delimiter: ","
+    human:
+      format:
+        precision: 1
+        delimiter: ","
+    percentage:
+      format:
+        precision: 0
+    precision:
+      format:
+        precision: 2
+  activerecord:
+    models:
+      post: "Post"
+      user: "User"
+      category: "Category"
+      comment: "Comment"
+    attributes:
+      post:
+        title: "Title"
+        body: "Body"
+        category: "Category"
+        created_at: "Created at"
+        updated_at: "Updated at"
+      user:
+        email: "Email"
+        password: "Password"
+      category:
+        name: "Name"
+        description: "Description"
+      comment:
+        body: "Comment"
+    errors:
+      models:
+        post:
+          attributes:
+            title:
+              blank: "can't be blank"
+              too_short: "is too short (minimum is %{count} characters)"
+            body:
+              blank: "can't be blank"
+              too_short: "is too short (minimum is %{count} characters)"
+        category:
+          attributes:
+            name:
+              blank: "can't be blank"
+              taken: "has already been taken"
