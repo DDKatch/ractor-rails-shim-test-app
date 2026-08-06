@@ -1,0 +1,35 @@
+<div class="mb-6" id="comments">
+  <h2 class="text-2xl font-bold mb-4">Comments (<%= post.comments.count %>)</h2>
+
+  <% post.comments.recent.each do |comment| %>
+    <div class="bg-gray-50 rounded-lg p-4 mb-3" id="comment_<%= comment.id %>">
+      <div class="flex items-center gap-2 mb-2">
+        <%= image_tag gravatar_url(comment.user&.email, size: 24), class: "w-6 h-6 rounded-full", alt: "" %>
+        <span class="font-medium text-sm"><%= comment.user&.email || "Anonymous" %></span>
+        <span class="text-gray-400 text-xs"><%= time_ago(comment.created_at) %></span>
+      </div>
+      <p class="text-gray-700"><%= comment.body %></p>
+
+      <% if user_signed_in? && comment.user == current_user %>
+        <div class="mt-2 flex gap-2 text-xs">
+          <%= link_to t("shared.edit"), edit_post_comment_path(post, comment), class: "text-blue-600 hover:underline" %>
+          <%= button_to t("shared.delete"), post_comment_path(post, comment), method: :delete, data: { turbo_confirm: t("shared.confirm_delete") }, class: "text-red-600 hover:underline bg-transparent border-none cursor-pointer text-xs" %>
+        </div>
+      <% end %>
+    </div>
+  <% end %>
+</div>
+
+<% if user_signed_in? %>
+  <div class="bg-white rounded-lg shadow-md p-4">
+    <h3 class="font-bold mb-2">Add a comment</h3>
+    <%= form_with(model: [post, post.comments.build], class: "space-y-3") do |f| %>
+      <div>
+        <%= f.text_area :body, rows: 3, placeholder: "Write your comment...", class: "w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" %>
+      </div>
+      <div>
+        <%= f.submit t("helpers.submit.comment.create"), class: "bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 cursor-pointer" %>
+      </div>
+    <% end %>
+  </div>
+<% end %>

@@ -1,0 +1,16 @@
+<div class="container mx-auto px-4 py-8 max-w-lg">
+  <h1 class="text-3xl font-bold mb-6">Edit Comment</h1>
+
+  <%= form_with(model: [@post, @comment], class: "space-y-4") do |f| %>
+    <div>
+      <%= f.label :body, class: "block text-sm font-medium text-gray-700 mb-1" %>
+      <%= f.text_area :body, rows: 4, class: "w-full border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" %>
+    </div>
+
+    <div>
+      <%= f.submit t("helpers.submit.comment.update"), class: "bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 cursor-pointer" %>
+    </div>
+  <% end %>
+
+  <%= link_to t("shared.back"), @post, class: "text-blue-600 hover:underline mt-4 inline-block" %>
+</div>

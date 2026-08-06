@@ -16,9 +16,6 @@
 
     <%= yield :head %>
 
-    <%# Enable PWA manifest for installable apps (make sure to enable in config/routes.rb too!) %>
-    <%#= tag.link rel: "manifest", href: pwa_manifest_path(format: :json) %>
-
     <link rel="icon" href="/icon.png" type="image/png">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icon.png">
@@ -32,13 +29,14 @@
       <nav class="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
         <%= link_to "Full Test App", root_path, class: "text-lg font-bold text-indigo-600" %>
         <div class="flex items-center gap-4 text-sm">
-          <%= link_to "Posts", posts_path, class: "text-gray-600 hover:text-indigo-600" %>
+          <%= link_to t("shared.nav_posts"), posts_path, class: "text-gray-600 hover:text-indigo-600" %>
+          <%= link_to t("shared.nav_categories"), categories_path, class: "text-gray-600 hover:text-indigo-600" %>
           <% if respond_to?(:new_user_session_path) %>
             <% if user_signed_in? %>
-              <%= button_to "Sign out", destroy_user_session_path, method: :delete,
+              <%= button_to t("shared.sign_out"), destroy_user_session_path, method: :delete,
                             class: "text-gray-600 hover:text-indigo-600" %>
             <% else %>
-              <%= link_to "Sign in", new_user_session_path, class: "text-gray-600 hover:text-indigo-600" %>
+              <%= link_to t("shared.sign_in"), new_user_session_path, class: "text-gray-600 hover:text-indigo-600" %>
             <% end %>
           <% end %>
         </div>

@@ -1,0 +1,21 @@
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold mb-4"><%= @category.name %></h1>
+  <p class="text-gray-600 mb-6"><%= @category.description %></p>
+
+  <div class="flex gap-2 mb-6">
+    <%= link_to t("shared.back"), categories_path, class: "text-blue-600 hover:underline" %>
+    <% if user_signed_in? %>
+      <%= link_to t("shared.edit"), edit_category_path(@category), class: "text-blue-600 hover:underline" %>
+    <% end %>
+  </div>
+
+  <h2 class="text-2xl font-bold mb-4">Posts in this category</h2>
+  <% @posts.each do |post| %>
+    <div class="bg-white rounded-lg shadow-md p-4 mb-4">
+      <h3 class="text-lg font-semibold">
+        <%= link_to post.title, post_path(post), class: "text-blue-600 hover:underline" %>
+      </h3>
+      <p class="text-gray-600 text-sm"><%= time_ago(post.created_at) %></p>
+    </div>
+  <% end %>
+</div>

@@ -1,0 +1,7 @@
+<div class="container mx-auto px-4 py-8 max-w-lg">
+  <h1 class="text-3xl font-bold mb-6">New Category</h1>
+
+  <%= render "form", category: @category %>
+
+  <%= link_to t("shared.back"), categories_path, class: "text-blue-600 hover:underline mt-4 inline-block" %>
+</div>

@@ -1,16 +1,31 @@
-<div class="rounded-lg border border-gray-200 bg-white p-6 shadow">
-  <h1 class="text-2xl font-bold"><%= @post.title %></h1>
-  <p class="mt-2 whitespace-pre-wrap text-gray-700"><%= @post.body %></p>
-</div>
+<div class="container mx-auto px-4 py-8 max-w-2xl">
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <div class="flex items-start justify-between mb-4">
+      <h1 class="text-3xl font-bold"><%= @post.title %></h1>
+      <%= post_status_badge(@post) %>
+    </div>
 
-<div class="mt-4 flex gap-3">
-  <% if user_signed_in? %>
-    <%= link_to "Edit", edit_post_path(@post),
-                class: "inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-white shadow hover:bg-indigo-700" %>
-    <%= button_to "Delete", @post, method: :delete,
-                  class: "inline-flex items-center rounded-md border border-red-300 px-4 py-2 text-red-700 hover:bg-red-50",
-                  form: { data: { turbo_confirm: "Delete this post?" } } %>
-  <% end %>
-  <%= link_to "Back to posts", posts_path,
-              class: "inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-50" %>
+    <div class="text-sm text-gray-500 mb-4">
+      by <%= @post.user&.email || "Unknown" %> &middot;
+      <%= time_ago(@post.created_at) %>
+      <% if @post.category %>
+        &middot; <%= link_to @post.category.name, category_path(@post.category), class: "text-blue-500 hover:underline" %>
+      <% end %>
+    </div>
+
+    <div class="prose max-w-none mb-6">
+      <%= simple_format(@post.body) %>
+    </div>
+
+    <% if user_signed_in? && @post.user == current_user %>
+      <div class="flex gap-2 border-t pt-4">
+        <%= link_to t("shared.edit"), edit_post_path(@post), class: "text-blue-600 hover:underline" %>
+        <%= button_to t("shared.delete"), @post, method: :delete, data: { turbo_confirm: t("shared.confirm_delete") }, class: "text-red-600 hover:underline bg-transparent border-none cursor-pointer" %>
+      </div>
+    <% end %>
+  </div>
+
+  <%= render "comments/comments", post: @post %>
+
+  <%= link_to t("shared.back"), posts_path, class: "text-blue-600 hover:underline mt-6 inline-block" %>
 </div>
