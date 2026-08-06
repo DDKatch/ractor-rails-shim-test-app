@@ -73,6 +73,14 @@ if mode == :ractor
   # Let exceptions propagate so the real backtrace is logged; otherwise
   # swallow (render 500) to keep workers alive.
   Rails.application.config.action_dispatch.show_exceptions = :none
+  # Serve compiled assets (e.g. tailwind.css) from app/assets/builds at runtime.
+  # Production disables Propshaft's asset server by default, so /assets/* falls
+  # through to the Rails router and 404s/RoutingErrors -> the stylesheet never
+  # loads and the page renders completely unstyled (the "white-on-white comment
+  # button" symptom: every utility class, including bg-blue-600, is absent).
+  # Re-enable it for this kino :ractor boot. (Run `bin/rails tailwindcss:build`
+  # first if app/assets/builds/tailwind.css is missing.)
+  Rails.application.config.assets.server = true
   Rails.application.initialize!
 
   # --- CSRF forgery protection (baked into the frozen :ractor graph) --------
