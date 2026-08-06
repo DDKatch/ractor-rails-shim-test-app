@@ -14,7 +14,7 @@
     </div>
 
     <div class="prose max-w-none mb-6">
-      <%= simple_format(@post.body) %>
+      <div class="whitespace-pre-wrap text-gray-700"><%= @post.body %></div>
     </div>
 
     <% if user_signed_in? && @post.user == current_user %>
