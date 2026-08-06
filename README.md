@@ -1,24 +1,28 @@
 # ractor-rails-shim-test-app
 
-## Benchmark — YJIT off, ractor-rails-shim 0.3.1
+## Benchmark — kino :ractor YJIT-off vs Puma/Falcon YJIT-on, ractor-rails-shim 0.3.1
 
-`BENCH_YJIT_OFF=1`, Ruby 4.0.6, Rails 8.1.3, `ab -c 64 -t 30 -k`, 12 cores.
-Raw data: `bench/results/bench-20260806-114400.json`.
+`BENCH_KINO_YJIT_OFF=1` (kino YJIT off, puma/falcon YJIT on), Ruby 4.0.6,
+Rails 8.1.3, `ab -c 64 -t 30 -k`, 12 cores.
+Raw data: `bench/results/bench-20260806-120953.json`.
 
 | Server | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Mem (MB) |
 |--------|-----------|------------------------|-------------------|----------|
-| kino :ractor (-w5 -t1) | **12,122** | **4,132** | **3,194** | **151** |
-| puma clustered (-w5 -t1) | 13,519 | 3,572 | 2,005 | 656 |
-| falcon forked (-n5) | 13,223 | 3,928 | 2,567 | 644 |
-| kino :ractor (-w5 -t5) | 6,810 | 3,319 | 1,968 | 173 |
-| puma clustered (-w5 -t5) | 13,079 | 3,167 | 2,091 | 668 |
-| falcon hybrid (-n5 --threads 5) | 11,420 | 3,224 | 2,127 | 657 |
-| kino :threaded (-t5) | 3,613 | 1,152 | 936 | 132 |
-| puma single (-w0 -t5) | 3,117 | 903 | 634 | 131 |
-| falcon async (-n1) | 2,945 | 553 | 586 | 180 |
+| **kino :ractor (-w5 -t1)** | 12,960 | 4,328 | **3,084** | **150** |
+| puma clustered (-w5 -t1) | **19,265** | 4,564 | 2,912 | 757 |
+| falcon forked (-n5) | **22,489** | **5,452** | **3,673** | 772 |
+| kino :ractor (-w5 -t5) | 6,949 | 3,482 | 2,096 | 168 |
+| puma clustered (-w5 -t5) | 18,325 | 4,591 | 3,189 | 780 |
+| falcon hybrid (-n5 --threads 5) | 16,608 | 4,490 | 2,952 | 798 |
+| kino :threaded (-t5) | 6,798 | 2,019 | 1,654 | 159 |
+| puma single (-w0 -t5) | 4,948 | 1,506 | 1,010 | 164 |
+| falcon async (-n1) | 4,909 | 1,419 | 920 | 211 |
 
-Mem = peak unique footprint (COW-aware). kino :ractor (-w5 -t1) leads on
-`/posts_plain` and POST at ~4× lower memory than forked servers.
+Mem = peak unique footprint (COW-aware). With puma/falcon at YJIT-on best,
+kino :ractor (YJIT-off) is competitive on `/posts_plain` and beats puma on
+POST — all at ~5× lower memory. Falcon forked (YJIT-on, 5 processes) leads
+raw throughput on read/no-DB paths. The `/posts` (Kaminari) gap persists
+independently of YJIT (Ruby-VM method-table barrier — upstream ruby#22224).
 
 The reference Rails application used to validate **`ractor-rails-shim`** running
 inside **`kino -m ractor`** (Ruby 4.0 Ractor-mode web server). It is a standard
