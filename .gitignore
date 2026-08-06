@@ -71,3 +71,7 @@
 
 # Rails encrypted credentials (decrypts via config/master.key, which is gitignored)
 config/credentials.yml.enc
+
+# Error logs and crash dumps from segfault investigation
+/errors.log
+/errors_*.log
