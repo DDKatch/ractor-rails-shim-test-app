@@ -1,0 +1,9 @@
+one:
+  body: "This is a comment on the first post."
+  user: one
+  post: one
+
+two:
+  body: "This is another comment on the first post."
+  user: two
+  post: one

@@ -35,7 +35,7 @@ class AllRoutesTest < ActionDispatch::IntegrationTest
       password: "password",
       password_confirmation: "password"
     )
-    @post = Post.create!(title: "Route Test", body: "Body")
+    @post = Post.create!(title: "Route Test", body: "Body of route test post")
     sign_in @user
   end
 
@@ -108,11 +108,11 @@ class AllRoutesTest < ActionDispatch::IntegrationTest
   test "creating and deleting a post works" do
     assert_difference("Post.count", 1) do
       post posts_path, params: {
-        post: { title: "Created in test", body: "Body" }
+        post: { title: "Created in test", body: "Body of created post" }
       }
     end
     assert_response :redirect
-    created = Post.find_by!(title: "Created in test")
+    created = Post.find_by!(title: "Created In Test")
     follow_redirect!
     assert_response :success
 
@@ -143,7 +143,7 @@ class AllRoutesTest < ActionDispatch::IntegrationTest
     assert_response :redirect
     follow_redirect!
     assert_response :success
-    assert_equal "Updated in test", @post.reload.title
+    assert_equal "Updated In Test", @post.reload.title
   end
 
   private
