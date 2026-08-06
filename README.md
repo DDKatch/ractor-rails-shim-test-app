@@ -1,10 +1,20 @@
 # ractor-rails-shim-test-app
 
-## Benchmark — kino :ractor YJIT-off vs Puma/Falcon YJIT-on, ractor-rails-shim 0.3.1
+This repo is the "does it actually work end-to-end" companion to the shim
+[ractor-rails-shim](https://github.com/DDKatch/ractor-rails-shim) — a monkey-patch
+shim that reroutes Rails' class-level instance variable accessors through
+`ActiveSupport::IsolatedExecutionState`, which is Ractor-safe, letting a Rails
+app run in Ractor mode without forking Rails itself. It is a proof-of-concept /
+stopgap; the goal is for Rails to do this upstream, at which point the gem
+becomes a no-op and can be removed. See that project's `README.md` for the
+blocker map and the per-concern patch inventory, and
+[`BENCHMARKS.md`](./BENCHMARKS.md) for the full kino `:ractor` vs Puma vs
+Falcon benchmark analysis.
+
+## Latest benchmark — best kino vs best Puma/Falcon, ractor-rails-shim 0.3.1
 
 `BENCH_KINO_YJIT_OFF=1` (kino YJIT off, puma/falcon YJIT on), Ruby 4.0.6,
 Rails 8.1.3, `ab -c 64 -t 30 -k`, 12 cores.
-Raw data: `bench/results/bench-20260806-120953.json`.
 
 | Server | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Avg Mem (MB) |
 |--------|-----------|------------------------|-------------------|--------------|
@@ -24,26 +34,6 @@ puma/falcon at YJIT-on best, kino :ractor (YJIT-off) is competitive on
 forked (YJIT-on, 5 processes) leads raw throughput on read/no-DB paths.
 The `/posts` (Kaminari) gap persists independently of YJIT (Ruby-VM
 method-table barrier — upstream ruby#22224).
-
-The reference Rails application used to validate **`ractor-rails-shim`** running
-inside **`kino -m ractor`** (Ruby 4.0 Ractor-mode web server). It is a standard
-Rails 8.1 app — **Devise 5**, **Propshaft**, **Kaminari**, **PostgreSQL** — that
-exercises the full request path (view rendering, authenticated Devise
-sign-in/sign-out, CSRF issuance + validation, and DB-backed writes) from real
-worker Ractors. **No patched Ruby or kino required** — official Ruby 4.0.6
-ships the frozen-iseq call-cache fix (#22075) and the cross-ractor env-string
-fix, so `kino -m ractor` runs on the upstream `kino` gem (0.2.1) as-is.
-
-This repo is the "does it actually work end-to-end" companion to the shim
-[ractor-rails-shim](https://github.com/DDKatch/ractor-rails-shim) — a monkey-patch
-shim that reroutes Rails' class-level instance variable accessors through
-`ActiveSupport::IsolatedExecutionState`, which is Ractor-safe, letting a Rails
-app run in Ractor mode without forking Rails itself. It is a proof-of-concept /
-stopgap; the goal is for Rails to do this upstream, at which point the gem
-becomes a no-op and can be removed. See that project's `README.md` for the
-blocker map and the per-concern patch inventory, and
-[`BENCHMARKS.md`](./BENCHMARKS.md) for the full kino `:ractor` vs Puma vs
-Falcon benchmark analysis.
 
 ## Requirements
 
