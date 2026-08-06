@@ -1,6 +1,6 @@
 GIT
   remote: https://github.com/DDKatch/ractor-rails-shim.git
-  revision: 22a3cdd239f5e343abe9bde4cb6eb700f991b2e0
+  revision: 6b1c877e4890fb924c84c7cfe82aa6252b17ffd1
   branch: main
   specs:
     ractor-rails-shim (0.3.1)
