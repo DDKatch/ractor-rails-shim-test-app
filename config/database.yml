@@ -4,6 +4,11 @@ default: &default
   pool: 5
   host: 127.0.0.1
   username: dev
+  # Disable GSSAPI/Kerberos auth to prevent SIGSEGV in forked workers.
+  # macOS libpq probes CFPreferences which is not fork-safe.
+  # See: https://github.com/ged/ruby-pg/issues/663
+  # See: https://github.com/ged/ruby-pg/issues/684
+  gssencmode: disable
 
 development:
   <<: *default
