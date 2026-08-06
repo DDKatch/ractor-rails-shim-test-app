@@ -125,7 +125,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
 
   RactorRailsShim.prepare_for_ractors!
 
-  app_constants = RactorRailsShim.capture_app_constants
+  app_constants = RactorRailsShim.capture_app_constants!
   app = RactorRailsShim.make_app_shareable!(Rails.application)
   app = Ractor.make_shareable(RactorRailsShim::WorkerApp.new(app, app_constants))
 
