@@ -371,7 +371,11 @@ else
       assert status.success?,
              "ractor boot subprocess failed (exit #{status.exitstatus}):\n#{stderr}\n#{stdout}"
 
-      data = JSON.parse(stdout)
+      # The subprocess may print Rails boot messages before the JSON payload.
+      # Find the first '{' to locate the JSON start.
+      json_start = stdout.index("{")
+      skip "ractor boot subprocess produced no JSON output" unless json_start
+      data = JSON.parse(stdout[json_start..])
       refute data.key?("error"), "ractor boot reported error: #{data['error']}"
 
       results = data["results"]

@@ -1,3 +1,11 @@
+GIT
+  remote: https://github.com/DDKatch/ractor-rails-shim.git
+  revision: 22a3cdd239f5e343abe9bde4cb6eb700f991b2e0
+  branch: main
+  specs:
+    ractor-rails-shim (0.3.1)
+      activesupport (>= 8.1)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -276,8 +284,6 @@ GEM
       rack (>= 1.3)
     rackup (2.3.1)
       rack (>= 3)
-    ractor-rails-shim (0.3.1)
-      activesupport (>= 8.1)
     rails (8.1.3.1)
       actioncable (= 8.1.3.1)
       actionmailbox (= 8.1.3.1)
@@ -411,7 +417,7 @@ DEPENDENCIES
   pg (~> 1.4)
   propshaft
   puma (>= 5.0)
-  ractor-rails-shim (~> 0.3.1)
+  ractor-rails-shim!
   rails (~> 8.1.3)
   rubocop-rails-omakase
   stackprof
@@ -524,7 +530,7 @@ CHECKSUMS
   rack-session (2.1.2) sha256=595434f8c0c3473ae7d7ac56ecda6cc6dfd9d37c0b2b5255330aa1576967ffe8
   rack-test (2.2.0) sha256=005a36692c306ac0b4a9350355ee080fd09ddef1148a5f8b2ac636c720f5c463
   rackup (2.3.1) sha256=6c79c26753778e90983761d677a48937ee3192b3ffef6bc963c0950f94688868
-  ractor-rails-shim (0.3.1) sha256=6f2172c138fdc9e099e9cf440a7ee7d1e04cde3238a32f4325cd76fc4b90f36d
+  ractor-rails-shim (0.3.1)
   rails (8.1.3.1) sha256=ccd11a36bfc171bf9c66d585d14c0ece91c0c9dde840aae60c0118d6f5c9c52a
   rails-dom-testing (2.3.0) sha256=8acc7953a7b911ca44588bf08737bc16719f431a1cc3091a292bca7317925c1d
   rails-html-sanitizer (1.7.1) sha256=e797a7c9b01e567307e317c576b49ab4168017e63eea4dba9ce3cb587e2f22c2

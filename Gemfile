@@ -1,9 +1,9 @@
 source "https://rubygems.org"
 
 # Local path: develop the shim against this app without cutting a gem.
-# Cut a release and revert to `gem "ractor-rails-shim", "~> 0.2"` before
+# Cut a release and revert to `gem "ractor-rails-shim", "~> 0.3"` before
 # publishing the test-app repo.
-gem "ractor-rails-shim", "~> 0.3.1"
+gem "ractor-rails-shim", git: "https://github.com/DDKatch/ractor-rails-shim.git", branch: "main"
 gem "rails", "~> 8.1.3"
 gem "propshaft"
 gem "tailwindcss-rails"

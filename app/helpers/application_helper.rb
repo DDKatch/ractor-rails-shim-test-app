@@ -1,6 +1,12 @@
 module ApplicationHelper
   def page_title(title)
-    content_for(:title) { "#{title} | Ractor Test App" }
+    title_str = "#{title} | Ractor Test App"
+    if respond_to?(:content_for)
+      result = content_for(:title) { title_str }
+      result || title_str.html_safe
+    else
+      title_str.html_safe
+    end
   end
 
   def time_ago(date)

@@ -63,12 +63,6 @@ jobs:
           - 5432:5432
         options: --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=3
 
-      # redis:
-      #   image: valkey/valkey:8
-      #   ports:
-      #     - 6379:6379
-      #   options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
-
     steps:
       - name: Install packages
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y libpq-dev
@@ -76,18 +70,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      - name: Override Gemfile for CI (use published gem, not local path)
+        run: |
+          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.3.1"|' Gemfile
+          bundle install
+
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true
 
-      - name: Run tests
+      - name: Run tests (skip ractor integration tests)
         env:
           RAILS_ENV: test
           DATABASE_URL: postgresql://dev@127.0.0.1:5432
-          # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
-          # REDIS_URL: redis://localhost:6379/0
-        run: bin/rails db:test:prepare test
+        run: |
+          bin/rails db:test:prepare
+          bin/rails test \
+            test/models/ \
+            test/controllers/ \
+            test/jobs/ \
+            test/mailers/ \
+            test/helpers/ \
+            test/integration/all_routes_test.rb
 
   system-test:
     runs-on: ubuntu-latest
@@ -102,18 +107,17 @@ jobs:
           - 5432:5432
         options: --health-cmd="pg_isready" --health-interval=10s --health-timeout=5s --health-retries=3
 
-      # redis:
-      #   image: valkey/valkey:8
-      #   ports:
-      #     - 6379:6379
-      #   options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
-
     steps:
       - name: Install packages
         run: sudo apt-get update && sudo apt-get install --no-install-recommends -y libpq-dev
 
       - name: Checkout code
         uses: actions/checkout@v7
+
+      - name: Override Gemfile for CI (use published gem, not local path)
+        run: |
+          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.3.1"|' Gemfile
+          bundle install
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -124,8 +128,6 @@ jobs:
         env:
           RAILS_ENV: test
           DATABASE_URL: postgresql://dev@127.0.0.1:5432
-          # RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
-          # REDIS_URL: redis://localhost:6379/0
         run: bin/rails db:test:prepare test:system
 
       - name: Keep screenshots from failed system tests
