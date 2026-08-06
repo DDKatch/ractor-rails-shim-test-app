@@ -59,7 +59,7 @@ Last updated: 2026-08-06
 | 47 |                       | Low-level caching (Rails.cache)     | 🔲 Pending | Not exercised |
 | 48 |                       | Sweepers / cache invalidation       | 🔲 Pending | Not exercised |
 | 49 | **Security**          | CSRF protection                     | ✅ Done | Ractor test verifies token |
-| 50 |                       | XSS sanitization (sanitize)         | 🔲 Pending | Not exercised |
+| 50 |                       | XSS sanitization (sanitize / simple_format) | ⛔ Unsupported | Nokogiri-backed `sanitize`/`simple_format` are **unusable in worker Ractors** (ractor-unsafe C method — see shim `COMPATIBILITY.md`); must be avoided in worker-rendered views. App works around it: `posts/show` renders `@post.body` escaped via ERB + `whitespace-pre-wrap` (XSS-safe, no Nokogiri in workers). |
 | 51 |                       | SQL injection prevention            | ✅ Done | Uses parameterized queries |
 | 52 |                       | Parameter filtering (filter_parameters) | ✅ Done | Initializer configures filter |
 | 53 |                       | Content Security Policy             | ✅ Done | Initializer sets CSP headers |
@@ -75,29 +75,25 @@ Last updated: 2026-08-06
 
 | Status | Count | Features |
 |--------|-------|----------|
-| ✅ Done | 45 | Core AR, AC, AJ, AM, AS, I18n, Security |
-| 🔲 Pending | 15 | Edge cases, caching, system tests, generators |
+| ✅ Done | 45 | Core AR, AC, AJ, AM, AS, I18n, Security (excl. sanitization) |
+| 🔲 Pending | 14 | Edge cases, caching, system tests, generators |
+| ⛔ Unsupported | 1 | XSS sanitization (sanitize / simple_format) — Nokogiri ractor-unsafe, unusable in worker Ractors |
 | ❌ Broken | 0 | (Segfaults are env-level, not feature-level) |
 
 ## Test Results (as of 2026-08-06)
 
 ```
-70 runs, 163 assertions, 0 failures, 0 errors, 1 skip
+70 runs, 166 assertions, 0 failures, 0 errors, 0 skips
 ```
 
-- **0 failures, 0 errors** — all feature-level tests pass
-- **1 skip** — RootLoadTest skipped: kino :ractor server can't serve PostsController#index (Kaminari paginate blocks)
+- **0 failures, 0 errors, 0 skips** — all feature-level tests pass, including the `:ractor` integration suite (no routes 555)
 - **Segfault fixed** — `gssencmode: disable` in database.yml prevents PG fork crash
 
 ## Known Ractor Limitations (555 responses in :ractor mode)
 
-These routes return 555 when served from worker Ractors (runtime limitation, not boot failure):
+As of the last full run (`bin/rails test` → 70 runs, 166 assertions, 0 failures, 0 errors, **0 skips**), **no routes return 555** — every audited route serves from worker Ractors in `:ractor` mode.
 
-| Route | Root Cause | Shim Fix Needed |
-|-------|-----------|-----------------|
-| `GET /`, `GET /posts` | Kaminari `paginate` uses block-based `redefine_method` | Patch Kaminari to use compiled `def` |
-| `GET /posts/:id` | `ActiveModel::Type.default_value` class ivars | Route class ivars through IES |
-| `GET /users/sign_in`, `sign_up`, `password/new` | Devise instantiates User → `ActiveModel::Type` | Same as above |
+The one residual worker-Ractor limitation is **HTML sanitization**: the `sanitize` / `simple_format` helpers are backed by Nokogiri, whose document parser is a **ractor-unsafe C method** (Ruby only permits it in the main Ractor). This is unfixable in the shim — full write-up in the shim's `COMPATIBILITY.md` (`actionview — sanitize / simple_format`). This app sidesteps it: user content is rendered escaped via ERB (XSS-safe) with `whitespace-pre-wrap`, so no Nokogiri call runs in workers.
 
 **What WORKS in :ractor mode:**
 - `GET /posts/new` (unauth) → 302 redirect (Devise before_action replay)
@@ -105,4 +101,4 @@ These routes return 555 when served from worker Ractors (runtime limitation, not
 - `DELETE /users/sign_out` → 422 (CSRF validation)
 - All in-process test suite tests (70/70 pass)
 
-Legend: ✅ Already verified | 🔲 Pending | ❌ Known broken
+Legend: ✅ Already verified | 🔲 Pending | ⛔ Unsupported (worker-Ractor incompatible by design — e.g. ractor-unsafe C ext; must be avoided/worked around in app code, not a shim bug to fix) | ❌ Known broken
