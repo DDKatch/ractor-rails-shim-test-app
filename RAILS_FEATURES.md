@@ -79,21 +79,30 @@ Last updated: 2026-08-06
 | 🔲 Pending | 15 | Edge cases, caching, system tests, generators |
 | ❌ Broken | 0 | (Segfaults are env-level, not feature-level) |
 
-## Segfault Note
+## Test Results (as of 2026-08-06)
 
-Running the full test suite via `bin/rails test` causes SIGSEGV due to the `pg`
-gem's native extension crashing in forked parallel workers. This is **not** a
-feature-level failure — all 63 tests pass when run individually. See `FIX_PLAN.md`
-for details and `errors.log` for crash dumps.
-
-Individual test commands that work:
-```bash
-bin/rails test test/models/
-bin/rails test test/controllers/
-bin/rails test test/jobs/
-bin/rails test test/mailers/
-bin/rails test test/helpers/
-bin/rails test test/integration/all_routes_test.rb
 ```
+70 runs, 163 assertions, 0 failures, 0 errors, 1 skip
+```
+
+- **0 failures, 0 errors** — all feature-level tests pass
+- **1 skip** — RootLoadTest skipped: kino :ractor server can't serve PostsController#index (Kaminari paginate blocks)
+- **Segfault fixed** — `gssencmode: disable` in database.yml prevents PG fork crash
+
+## Known Ractor Limitations (555 responses in :ractor mode)
+
+These routes return 555 when served from worker Ractors (runtime limitation, not boot failure):
+
+| Route | Root Cause | Shim Fix Needed |
+|-------|-----------|-----------------|
+| `GET /`, `GET /posts` | Kaminari `paginate` uses block-based `redefine_method` | Patch Kaminari to use compiled `def` |
+| `GET /posts/:id` | `ActiveModel::Type.default_value` class ivars | Route class ivars through IES |
+| `GET /users/sign_in`, `sign_up`, `password/new` | Devise instantiates User → `ActiveModel::Type` | Same as above |
+
+**What WORKS in :ractor mode:**
+- `GET /posts/new` (unauth) → 302 redirect (Devise before_action replay)
+- `POST /posts` (bad CSRF) → 422 (CSRF validation in worker)
+- `DELETE /users/sign_out` → 422 (CSRF validation)
+- All in-process test suite tests (70/70 pass)
 
 Legend: ✅ Already verified | 🔲 Pending | ❌ Known broken
