@@ -15,6 +15,10 @@ gem "falcon"
 gem "kino", "~> 0.2.1"
 gem "devise", ">= 4.9"
 gem "kaminari", "~> 1.2"
+# ActiveStorage variant generation needs image_processing; without it Rails
+# warns on every boot ("Generating image variants require the image_processing
+# gem"). The app attaches avatars, so keep the transformer available.
+gem "image_processing", "~> 1.2"
 gem "tzinfo-data", platforms: %i[ windows jruby ]
 gem "msgpack", ">= 1.7.0"
 
