@@ -153,7 +153,7 @@ if mode == :ractor
     # the app. `Ractor.make_shareable(app)` deep-freezes the Zeitwerk autoloaders,
     # after which their cpath enumeration returns nothing, so the capture must
     # happen on the still-warm app.
-    app_constants = RactorRailsShim.capture_app_constants
+    app_constants = RactorRailsShim.capture_app_constants!
     app = RactorRailsShim.make_app_shareable!(Rails.application)
     # Each kino worker Ractor runs with no shared DB connections and with its own
     # (empty) top-level constant namespace for the app's own model constants.
