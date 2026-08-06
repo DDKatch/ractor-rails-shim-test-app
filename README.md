@@ -1,5 +1,25 @@
 # ractor-rails-shim-test-app
 
+## Benchmark — YJIT off, ractor-rails-shim 0.3.1
+
+`BENCH_YJIT_OFF=1`, Ruby 4.0.6, Rails 8.1.3, `ab -c 64 -t 30 -k`, 12 cores.
+Raw data: `bench/results/bench-20260806-114400.json`.
+
+| Server | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Mem (MB) |
+|--------|-----------|------------------------|-------------------|----------|
+| kino :ractor (-w5 -t1) | **12,122** | **4,132** | **3,194** | **151** |
+| puma clustered (-w5 -t1) | 13,519 | 3,572 | 2,005 | 656 |
+| falcon forked (-n5) | 13,223 | 3,928 | 2,567 | 644 |
+| kino :ractor (-w5 -t5) | 6,810 | 3,319 | 1,968 | 173 |
+| puma clustered (-w5 -t5) | 13,079 | 3,167 | 2,091 | 668 |
+| falcon hybrid (-n5 --threads 5) | 11,420 | 3,224 | 2,127 | 657 |
+| kino :threaded (-t5) | 3,613 | 1,152 | 936 | 132 |
+| puma single (-w0 -t5) | 3,117 | 903 | 634 | 131 |
+| falcon async (-n1) | 2,945 | 553 | 586 | 180 |
+
+Mem = peak unique footprint (COW-aware). kino :ractor (-w5 -t1) leads on
+`/posts_plain` and POST at ~4× lower memory than forked servers.
+
 The reference Rails application used to validate **`ractor-rails-shim`** running
 inside **`kino -m ractor`** (Ruby 4.0 Ractor-mode web server). It is a standard
 Rails 8.1 app — **Devise 5**, **Propshaft**, **Kaminari**, **PostgreSQL** — that
