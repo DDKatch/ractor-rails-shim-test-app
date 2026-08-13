@@ -80,7 +80,11 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # prove token ISSUANCE (a GET form renders a token) and VALIDATION (a POST with
   # the token is accepted; a forged token is rejected) inside real worker Ractors.
   ActionController::Base.allow_forgery_protection = true
-  ApplicationController.before_action :verify_authenticity_token
+  # NOTE: verify_authenticity_token is NOT added to ApplicationController here.
+  # Rails' default protect_from_forgery already registers it on
+  # ActionController::Base (request_forgery_protection.rb:214); adding it again
+  # on ApplicationController would duplicate the before_action. ActionController::Base
+  # has it once (verified above after allow_forgery_protection = true).
 
   # Confirm the frozen graph actually holds the app routes (not just the railtie).
   anchored = Rails.application.routes.routes.anchored_routes.size

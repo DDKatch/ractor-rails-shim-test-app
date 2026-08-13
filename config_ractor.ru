@@ -86,7 +86,14 @@ if mode == :ractor
   # (Turbo), so the token is emitted as a <meta name="csrf-token"> tag.
   Rails.application.config.action_controller.allow_forgery_protection = true
   ActionController::Base.allow_forgery_protection = true
-  ApplicationController.before_action :verify_authenticity_token
+
+  # NOTE: `verify_authenticity_token` is NOT added to ApplicationController here.
+  # Rails' default `protect_from_forgery` already registers it on
+  # ActionController::Base (request_forgery_protection.rb:214), so adding it
+  # again on ApplicationController would duplicate the before_action in the
+  # chain. The shim's SymbolicTransport replays per-class ancestor entries
+  # faithfully, so a duplicate would run twice (harmless — the method is
+  # idempotent — but redundant). Leaving it on ActionController::Base only.
 
   # The CachingKeyGenerator (Rails.application.key_generator) keeps a per-secret
   # memoization cache (@key_generators). During boot/eager-load it may be primed
