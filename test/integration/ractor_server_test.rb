@@ -155,6 +155,35 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "SELECT count(*) FROM comments WHERE post_id = #{del_post_id}"
   ).to_i
 
+  # Seed a Post WITH one child Comment for the nested-route comment DELETE
+  # test. CommentsController#destroy uses before_action :set_post then
+  # :set_comment — the SymbolicTransport filter ordering bug (reverse_each
+  # reversing same-class declaration order) caused set_comment to run before
+  # set_post, so @post was nil → NoMethodError 500. A 302 here proves the
+  # filter ordering fix works in :ractor mode.
+  nested_email = "nested@test.com"
+  conn.execute("DELETE FROM comments WHERE user_id = (SELECT id FROM users WHERE email = #{conn.quote(nested_email)})")
+  conn.execute("DELETE FROM posts WHERE user_id = (SELECT id FROM users WHERE email = #{conn.quote(nested_email)})")
+  conn.execute("DELETE FROM users WHERE email = #{conn.quote(nested_email)}")
+  conn.execute(
+    "INSERT INTO users (email, encrypted_password, created_at, updated_at) " \
+    "VALUES (#{conn.quote(nested_email)}, #{conn.quote(user_pw)}, now(), now())"
+  )
+  nested_author_id = conn.select_value("SELECT id FROM users WHERE email = #{conn.quote(nested_email)}").to_i
+  conn.execute(
+    "INSERT INTO posts (title, body, user_id, created_at, updated_at) " \
+    "VALUES ('Nested delete proof', 'parent for comment delete', #{nested_author_id}, now(), now())"
+  )
+  nested_post_id = conn.select_value("SELECT currval('posts_id_seq')").to_i
+  conn.execute(
+    "INSERT INTO comments (body, post_id, user_id, created_at, updated_at) VALUES " \
+    "('delete me via nested route', #{nested_post_id}, #{nested_author_id}, now(), now())"
+  )
+  nested_comment_id = conn.select_value("SELECT currval('comments_id_seq')").to_i
+  nested_comments_before = conn.select_value(
+    "SELECT count(*) FROM comments WHERE post_id = #{nested_post_id}"
+  ).to_i
+
   unless RactorRailsShim.respond_to?(:prepare_for_ractors!)
     warn "ractor-rails-shim not available"
     puts JSON.generate("error" => "ractor-rails-shim not available")
@@ -368,6 +397,19 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "SELECT count(*) FROM posts WHERE id = #{del_post_id}"
   ).to_i
 
+  # 8b. DELETE a Comment via the nested route DELETE /posts/:post_id/comments/:id
+  #     in a worker Ractor (authenticated). CommentsController#destroy uses
+  #     before_action :set_post then :set_comment. The SymbolicTransport filter
+  #     ordering bug reversed same-class declaration order, so set_comment ran
+  #     before set_post (@post was nil → 500). A 302 here proves the fix.
+  nested_del_token = csrf_token_from(dispatch(app, "GET", "/posts/new", nil, auth_cookie)[2])
+  nested_del_body = "authenticity_token=#{CGI.escape(nested_del_token.to_s)}"
+  nested_del_status, nested_del_headers, nested_del_body_resp =
+    dispatch(app, "DELETE", "/posts/#{nested_post_id}/comments/#{nested_comment_id}", nested_del_body, auth_cookie)
+  nested_comments_after = conn.select_value(
+    "SELECT count(*) FROM comments WHERE post_id = #{nested_post_id}"
+  ).to_i
+
   # Public GET routes (no auth, no CSRF needed).
   root_status,  root_headers,  root_body  = dispatch(app, "GET", "/", nil, nil)
   posts_status, posts_headers, posts_body = dispatch(app, "GET", "/posts", nil, nil)
@@ -400,6 +442,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "DELETE /users/sign_out" => [so_status, so_headers, so_body],
     "GET /posts/new (signed-out)" => [dead_status, dead_headers, dead_body],
     "DELETE /posts/#{del_post_id} (dependents)" => [del_status, del_headers, del_body_resp],
+    "DELETE /posts/#{nested_post_id}/comments/#{nested_comment_id} (nested)" => [nested_del_status, nested_del_headers, nested_del_body_resp],
   }
 
   puts JSON.generate(
@@ -411,6 +454,10 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "del_comments_before" => del_comments_before,
     "del_comments_after" => del_comments_after,
     "del_post_exists" => del_post_exists,
+    "nested_post_id" => nested_post_id,
+    "nested_comment_id" => nested_comment_id,
+    "nested_comments_before" => nested_comments_before,
+    "nested_comments_after" => nested_comments_after,
     "login_token_present" => !login_token.nil?,
     "new_token_present" => !new_token.nil?,
     "initial_count" => final_count - 1,
@@ -527,6 +574,22 @@ else
                     "dependent: :destroy must remove child comments in a worker Ractor"
       assert_equal 0, data["del_post_exists"],
                     "the parent Post must be deleted"
+
+      # --- NESTED-ROUTE COMMENT DELETE in a worker Ractor ----------------
+      # DELETE /posts/:post_id/comments/:id goes through CommentsController,
+      # whose before_action chain is [:set_post, :set_comment,
+      # :authenticate_user!] — all on the SAME class. The SymbolicTransport
+      # filter-ordering bug (reverse_each reversing same-class declaration
+      # order) ran set_comment BEFORE set_post, so @post was nil → 500. A 302
+      # here proves the ordering fix works in :ractor mode.
+      nested_key = "DELETE /posts/#{data['nested_post_id']}/comments/#{data['nested_comment_id']} (nested)"
+      nested_del_status = results[nested_key][0]
+      assert_includes [302, 303], nested_del_status,
+                    "nested DELETE /posts/:id/comments/:id must redirect (302/303)"
+      assert_equal 1, data["nested_comments_before"],
+                    "one child comment should have been seeded for the nested delete test"
+      assert_equal 0, data["nested_comments_after"],
+                    "the nested-route comment delete must remove the comment in a worker Ractor"
 
       # --- Summary of known limitations ---
       all_statuses = results.transform_values { |v| v[0] }
