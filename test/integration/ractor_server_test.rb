@@ -379,6 +379,12 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # persisted exactly one new row.
   final_count = conn.select_value("SELECT count(*) FROM posts").to_i
 
+  # Query the title of the row created by the worker POST to prove
+  # before_save :normalize_title ran in the worker Ractor (titleized).
+  created_db_title = conn.select_value(
+    "SELECT title FROM posts WHERE title LIKE '%Ractor Create Proof%' ORDER BY id DESC LIMIT 1"
+  ).to_s
+
   results = {
     "GET /" => [root_status, root_headers, root_body],
     "GET /posts" => [posts_status, posts_headers, posts_body],
@@ -400,6 +406,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "post_id" => post_id,
     "post_title" => post_title,
     "created_title" => created_title,
+    "created_db_title" => created_db_title,
     "del_post_id" => del_post_id,
     "del_comments_before" => del_comments_before,
     "del_comments_after" => del_comments_after,
@@ -487,6 +494,18 @@ else
       # --- CSRF VALIDATION REJECTS a forged token in a worker Ractor -------
       assert_equal 422, results["POST /posts (bad token)"][0],
                    "POST /posts with a bad CSRF token must be rejected (422)"
+
+      # --- MODEL LIFECYCLE CALLBACKS in a worker Ractor -------------------
+      # POST /posts with a valid CSRF token must 302 (redirect after create),
+      # proving the model save path works in a worker. The before_save
+      # :normalize_title callback titleizes the title, so the DB row should
+      # have the titleized form — proving app-defined `def` callbacks fire
+      # in the worker Ractor (unshareable-Proc framework filters like
+      # autosave are skipped, app callbacks run).
+      assert_equal 302, results["POST /posts (valid token)"][0],
+                   "POST /posts with a valid CSRF token must redirect (302) after creating the post"
+      assert_equal "Ractor Create Proof", data["created_db_title"],
+                   "before_save :normalize_title must titleize the title in the worker Ractor"
 
       # --- SESSION-MUTATING sign-out in a worker Ractor -------------------
       signout_status = results["DELETE /users/sign_out"][0]
