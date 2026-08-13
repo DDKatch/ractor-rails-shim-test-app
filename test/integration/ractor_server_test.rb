@@ -111,11 +111,49 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # hash string inserted raw.
   user_email = "signin@test.com"
   user_pw = Devise::Encryptor.digest(User, "password")
+  # Delete dependent rows first so the user DELETE is never blocked by the
+  # posts/comments this harness (or a prior run) created for this user.
+  conn.execute("DELETE FROM comments WHERE user_id = (SELECT id FROM users WHERE email = #{conn.quote(user_email)})")
+  conn.execute("DELETE FROM posts WHERE user_id = (SELECT id FROM users WHERE email = #{conn.quote(user_email)})")
   conn.execute("DELETE FROM users WHERE email = #{conn.quote(user_email)}")
   conn.execute(
     "INSERT INTO users (email, encrypted_password, created_at, updated_at) " \
     "VALUES (#{conn.quote(user_email)}, #{conn.quote(user_pw)}, now(), now())"
   )
+  # Seed a Post WITH two child Comments (committed to the test DB) so a worker
+  # Ractor can prove the `dependent: :destroy` cascade transport actually
+  # deletes the children in :ractor mode. The test DB has NO on_delete: cascade
+  # constraint, so WITHOUT the shim's callback replay the parent DELETE would
+  # raise a foreign-key violation (555). Raw SQL avoids Devise's
+  # before_validation callbacks on ActiveRecord::Base under eager load. Uses a
+  # dedicated author user (not the sign-in user) so the cleanup DELETE of the
+  # sign-in user below is never blocked by these comments.
+  cascade_email = "cascade@test.com"
+  conn.execute(
+    "DELETE FROM comments WHERE user_id = (SELECT id FROM users WHERE email = #{conn.quote(cascade_email)})"
+  )
+  conn.execute(
+    "DELETE FROM posts WHERE user_id = (SELECT id FROM users WHERE email = #{conn.quote(cascade_email)})"
+  )
+  conn.execute("DELETE FROM users WHERE email = #{conn.quote(cascade_email)}")
+  conn.execute(
+    "INSERT INTO users (email, encrypted_password, created_at, updated_at) " \
+    "VALUES (#{conn.quote(cascade_email)}, #{conn.quote(user_pw)}, now(), now())"
+  )
+  cascade_author_id = conn.select_value("SELECT id FROM users WHERE email = #{conn.quote(cascade_email)}").to_i
+  conn.execute(
+    "INSERT INTO posts (title, body, user_id, created_at, updated_at) " \
+    "VALUES ('Cascade proof', 'parent to be destroyed', #{cascade_author_id}, now(), now())"
+  )
+  del_post_id = conn.select_value("SELECT currval('posts_id_seq')").to_i
+  conn.execute(
+    "INSERT INTO comments (body, post_id, user_id, created_at, updated_at) VALUES " \
+    "('child one', #{del_post_id}, #{cascade_author_id}, now(), now()), " \
+    "('child two', #{del_post_id}, #{cascade_author_id}, now(), now())"
+  )
+  del_comments_before = conn.select_value(
+    "SELECT count(*) FROM comments WHERE post_id = #{del_post_id}"
+  ).to_i
 
   unless RactorRailsShim.respond_to?(:prepare_for_ractors!)
     warn "ractor-rails-shim not available"
@@ -315,6 +353,21 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   dead_status, dead_headers, dead_body =
     dispatch(app, "GET", "/posts/new", nil, signout_cookie)
 
+  # 8. DELETE a Post WITH two child Comments in a worker Ractor (authenticated).
+  #    The test DB has NO on_delete: cascade constraint, so a 302 here proves the
+  #    shim's `dependent:` destroy transport actually removed the children in
+  #    :ractor mode (a FK-violation 555 is the failure signal without it).
+  del_token = csrf_token_from(dispatch(app, "GET", "/posts/new", nil, auth_cookie)[2])
+  del_body = "authenticity_token=#{CGI.escape(del_token.to_s)}"
+  del_status, del_headers, del_body_resp =
+    dispatch(app, "DELETE", "/posts/#{del_post_id}", del_body, auth_cookie)
+  del_comments_after = conn.select_value(
+    "SELECT count(*) FROM comments WHERE post_id = #{del_post_id}"
+  ).to_i
+  del_post_exists = conn.select_value(
+    "SELECT count(*) FROM posts WHERE id = #{del_post_id}"
+  ).to_i
+
   # Public GET routes (no auth, no CSRF needed).
   root_status,  root_headers,  root_body  = dispatch(app, "GET", "/", nil, nil)
   posts_status, posts_headers, posts_body = dispatch(app, "GET", "/posts", nil, nil)
@@ -340,12 +393,17 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "POST /posts (bad token)" => [bad_status, bad_headers, bad_body],
     "DELETE /users/sign_out" => [so_status, so_headers, so_body],
     "GET /posts/new (signed-out)" => [dead_status, dead_headers, dead_body],
+    "DELETE /posts/#{del_post_id} (dependents)" => [del_status, del_headers, del_body_resp],
   }
 
   puts JSON.generate(
     "post_id" => post_id,
     "post_title" => post_title,
     "created_title" => created_title,
+    "del_post_id" => del_post_id,
+    "del_comments_before" => del_comments_before,
+    "del_comments_after" => del_comments_after,
+    "del_post_exists" => del_post_exists,
     "login_token_present" => !login_token.nil?,
     "new_token_present" => !new_token.nil?,
     "initial_count" => final_count - 1,
@@ -433,7 +491,23 @@ else
       # --- SESSION-MUTATING sign-out in a worker Ractor -------------------
       signout_status = results["DELETE /users/sign_out"][0]
       assert_includes [302, 303, 422], signout_status,
-                   "DELETE /users/sign_out should redirect or fail CSRF"
+                    "DELETE /users/sign_out should redirect or fail CSRF"
+
+      # --- dependent: :destroy cascade transport in a worker Ractor -------
+      # The test DB has NO on_delete: cascade constraint, so a 302 here proves
+      # the shim replayed the `dependent:` destroy and removed child comments
+      # in :ractor mode (absent the transport, the parent DELETE hits a
+      # foreign-key violation -> 555).
+      del_key = "DELETE /posts/#{data['del_post_id']} (dependents)"
+      del_status = results[del_key][0]
+      assert_includes [302, 303], del_status,
+                    "DELETE /posts/:id with dependent children must redirect (302/303)"
+      assert_equal 2, data["del_comments_before"],
+                    "two child comments should have been seeded for the cascade test"
+      assert_equal 0, data["del_comments_after"],
+                    "dependent: :destroy must remove child comments in a worker Ractor"
+      assert_equal 0, data["del_post_exists"],
+                    "the parent Post must be deleted"
 
       # --- Summary of known limitations ---
       all_statuses = results.transform_values { |v| v[0] }

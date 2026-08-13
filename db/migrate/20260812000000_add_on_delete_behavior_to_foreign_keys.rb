@@ -1,28 +1,28 @@
-# Back the `dependent:` associations with DB-level ON DELETE behavior so that
-# deleting a parent works correctly under Ractor mode. In worker Ractors the
-# Rails callback chain for `dependent: :destroy` / `dependent: :nullify` is
-# intentionally empty (the __callbacks class_attribute cannot be made
-# Ractor-shareable — it holds a Mutex + per-callback lambdas), so the Ruby
-# path never runs there. Without a DB constraint the parent DELETE then hits a
-# foreign-key violation. ON DELETE CASCADE / NULLIFY performs the same work at
-# the SQL layer, which is Ractor-safe. Main (non-Ractor) behavior is unchanged:
-# the Ruby `dependent:` callbacks still run and the constraint is a no-op backup.
+# Back the `dependent:` associations with DB-level ON DELETE behavior was the
+# original fix, but the shim now transports `dependent:` cascades into worker
+# Ractors via SHAREABLE_DEPENDENT_ASSOCIATIONS (see replay_destroy_dependents!
+# in storage_strategy.rb). The FK constraints below intentionally carry NO
+# `on_delete:` action so this migration is a no-op-level check that the Ruby
+# `dependent:` path (now replayed in workers) is what performs the cascade. If
+# the transport were missing, deleting a parent here would raise a foreign-key
+# violation — so a green ractor-mode delete is a real test of the shim.
 class AddOnDeleteBehaviorToForeignKeys < ActiveRecord::Migration[8.1]
   def change
-    # Post has_many :comments, dependent: :destroy
+    # Post has_many :comments, dependent: :destroy  -> replayed in workers
+    # (FK left without on_delete so the Ruby path is the sole cascade path)
     remove_foreign_key :comments, :posts
-    add_foreign_key :comments, :posts, on_delete: :cascade
+    add_foreign_key :comments, :posts
 
-    # User has_many :posts, dependent: :destroy
+    # User has_many :posts, dependent: :destroy -> replayed in workers
     remove_foreign_key :posts, :users
-    add_foreign_key :posts, :users, on_delete: :cascade
+    add_foreign_key :posts, :users
 
-    # User has_many :comments, dependent: :destroy
+    # User has_many :comments, dependent: :destroy -> replayed in workers
     remove_foreign_key :comments, :users
-    add_foreign_key :comments, :users, on_delete: :cascade
+    add_foreign_key :comments, :users
 
-    # Category has_many :posts, dependent: :nullify
+    # Category has_many :posts, dependent: :nullify -> replayed in workers
     remove_foreign_key :posts, :categories
-    add_foreign_key :posts, :categories, on_delete: :nullify
+    add_foreign_key :posts, :categories
   end
 end
