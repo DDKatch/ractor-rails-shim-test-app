@@ -27,6 +27,12 @@ class AllRoutesTest < ActionDispatch::IntegrationTest
     /rails/conductor
     /rails/mailers
     /cable
+    /json_probe
+    /scope_probe
+    /mail_probe
+    /attach_probe
+    /attach_read_probe
+    /mail_deliver_probe
   ].freeze
 
   setup do

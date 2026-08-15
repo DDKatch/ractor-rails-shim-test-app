@@ -80,4 +80,15 @@ Rails.application.configure do
   #
   # Skip DNS rebinding protection for the default health check endpoint.
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
+
+  # --- Mail delivery (manual testing in `kino -m ractor` mode) ---
+  # Point ActionMailer at MailCatcher so welcome emails are captured and
+  # inspectable at http://127.0.0.1:1080 instead of hitting a real SMTP server.
+  # NOTE: delivery from a *worker Ractor* is currently a known limitation
+  # (ActionMailer::Base#config resolves to nil in the worker, so mailer
+  # rendering raises before delivery) — see FEATURES.md TODO #3. This config
+  # applies to the main-Ractor / non-worker paths and the job adapter below.
+  config.action_mailer.delivery_method = :smtp
+  config.action_mailer.smtp_settings = { address: "127.0.0.1", port: 1025 }
+  config.action_mailer.raise_delivery_errors = true
 end
