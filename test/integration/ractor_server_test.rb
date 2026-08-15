@@ -46,6 +46,12 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # token issuance (a GET form page must render a token) and validation (a
   # POST with the token is accepted; a POST with a bad token is rejected).
   Rails.application.config.action_controller.allow_forgery_protection = true
+  # Mailer delivery: use the :test method in the :ractor worker verification so
+  # the captured delivery-method class is Mail::TestMailer (no real SMTP server,
+  # and Mail::SMTP::DEFAULTS is an un-shareable constant). This proves the
+  # mailer build + ERB render + delivery path works in a worker Ractor.
+  Rails.application.config.action_mailer.delivery_method = :test
+  Rails.application.config.action_mailer.perform_deliveries = true
   # Pragmatic config; in the frozen :ractor graph this does not propagate to
   # workers, so forms stay remote and the token is emitted in a <meta
   # name="csrf-token"> tag. `csrf_token_from` reads both the meta tag and a
@@ -56,6 +62,13 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   Rails.application.config.enable_reloading = false
   Rails.application.config.assets.sweep_cache = false
   Rails.application.config.action_view.cache_template_loading = true
+  # ActiveStorage service: production doesn't set one, but the attach_probe
+  # (TODO #4) needs `ActiveStorage::Blob.service` to resolve (it's set from
+  # `config.active_storage.service` during the `active_storage.services`
+  # initializer). Point at the :test disk service (config/storage/test.yml)
+  # so the blob's `service_name` defaults correctly in main and the frozen
+  # graph carries it to workers.
+  Rails.application.config.active_storage.service = :test
   # kino's :ractor workers do not dispatch through ActionDispatch::Executor
   # (kino owns the Ractor scheduling). The frozen, shared graph never reloads,
   # so drop Executor (and ShowExceptions, so worker errors surface to the
@@ -72,6 +85,17 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   Rails.application.config.middleware.delete(Rails::Rack::SilenceRequest)
 
   Rails.application.initialize!
+
+  # Force the :test mailer delivery method AFTER initialize! (the environment
+  # file sets :smtp, which would otherwise be captured by the shim's mail patch
+  # as Mail::SMTP — whose ::DEFAULTS constant is un-shareable). :test proves the
+  # mailer build + ERB render + delivery path works inside a worker Rector.
+  if defined?(::Mail)
+    ::Mail.defaults { delivery_method :test }
+  end
+  if defined?(::ActionMailer::Base)
+    ::ActionMailer::Base.delivery_method = :test
+  end
 
   # Enable CSRF protection for the :ractor worker verification. The ractor-rails-shim-test-app
   # does not call `protect_from_forgery` by default, so without this CSRF is inert
@@ -421,6 +445,27 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   su_status,    su_headers,    su_body    = dispatch(app, "GET", "/users/sign_up", nil, nil)
   pw_status,    pw_headers,    pw_body    = dispatch(app, "GET", "/users/password/new", nil, nil)
 
+  # JSON-render probe (TODO #1): `render json:` must work in a worker Ractor.
+  jp_status, jp_headers, jp_body = dispatch(app, "GET", "/json_probe", nil, nil)
+
+  # Scope probe (TODO #2): a lambda `scope` must be callable in a worker Ractor.
+  sp_status, sp_headers, sp_body = dispatch(app, "GET", "/scope_probe", nil, nil)
+
+  # Mail probe (TODO #3): ActionMailer build + render + deliver in a worker Ractor.
+  mp_status, mp_headers, mp_body = dispatch(app, "GET", "/mail_probe", nil, nil)
+
+  # Attach probe (TODO #4): ActiveStorage has_one_attached in a worker Ractor.
+  ap_status, ap_headers, ap_body = dispatch(app, "GET", "/attach_probe", nil, nil)
+
+  # Attach read-back probe: reads the persisted avatar from DB in a worker
+  # Ractor (proves the full read-write cycle: attach in one worker, read in
+  # another).
+  arp_status, arp_headers, arp_body = dispatch(app, "GET", "/attach_read_probe", nil, nil)
+
+  # Mail deliver probe: builds, delivers, and inspects the email in a worker
+  # Ractor (proves the full mail pipeline including test inbox inspection).
+  mdp_status, mdp_headers, mdp_body = dispatch(app, "GET", "/mail_deliver_probe", nil, nil)
+
   # Snapshot the row count AFTER the worker writes, so we can prove the POST
   # persisted exactly one new row.
   final_count = conn.select_value("SELECT count(*) FROM posts").to_i
@@ -440,6 +485,12 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /users/sign_in" => [lp_status, lp_headers, lp_body],
     "GET /users/sign_up" => [su_status, su_headers, su_body],
     "GET /users/password/new" => [pw_status, pw_headers, pw_body],
+    "GET /json_probe" => [jp_status, jp_headers, jp_body],
+    "GET /scope_probe" => [sp_status, sp_headers, sp_body],
+    "GET /mail_probe" => [mp_status, mp_headers, mp_body],
+    "GET /attach_probe" => [ap_status, ap_headers, ap_body],
+    "GET /attach_read_probe" => [arp_status, arp_headers, arp_body],
+    "GET /mail_deliver_probe" => [mdp_status, mdp_headers, mdp_body],
     "POST /users/sign_in" => [si_status, si_headers, si_body],
     "POST /posts (valid token)" => [pc_status, pc_headers, pc_body],
     "POST /posts (bad token)" => [bad_status, bad_headers, bad_body],
@@ -594,6 +645,114 @@ else
                     "one child comment should have been seeded for the nested delete test"
       assert_equal 0, data["nested_comments_after"],
                     "the nested-route comment delete must remove the comment in a worker Ractor"
+
+      # --- TODO #1: render json: in a worker Ractor -------------------------
+      # GET /json_probe uses `render json: { ... }`. Before the shim fix this
+      # returned 555 ("defined with an un-shareable Proc") because Rails defines
+      # _render_with_renderer_json via define_method(&block) in the main Ractor.
+      # A successful worker render returns 200 with a parseable JSON body.
+      jp_key = "GET /json_probe"
+      jp_status = results[jp_key][0]
+      jp_body = results[jp_key][2]
+      assert_equal 200, jp_status,
+                    "GET /json_probe (render json:) must return 200 in a worker Ractor"
+      jp_parsed = JSON.parse(jp_body)
+      assert_equal true, jp_parsed["ractor"],
+                   "GET /json_probe JSON body must parse with ractor: true"
+
+      # --- TODO #2: lambda scope in a worker Ractor -----------------------
+      # GET /scope_probe calls `User.recent` (a `scope :recent, -> { ... }`
+      # lambda defined at boot). The shim must let a worker Ractor execute it
+      # (the scope body is re-defined via string eval, not the main-Ractor
+      # block) and run the DB query. A 200 with a parseable JSON body proves it.
+      sp_key = "GET /scope_probe"
+      sp_status = results[sp_key][0]
+      sp_body = results[sp_key][2]
+      assert_equal 200, sp_status,
+                    "GET /scope_probe (lambda scope) must return 200 in a worker Ractor"
+      sp_parsed = JSON.parse(sp_body)
+      assert sp_parsed.key?("count"),
+             "GET /scope_probe JSON body must include a count"
+
+      # --- TODO #3: ActionMailer in a worker Ractor ----------------------
+      # GET /mail_probe builds and delivers a UserMailer.welcome_email message
+      # inside a worker Ractor. The shim patches the `mail` gem (cvars → IES,
+      # parser ivars, PartsList DelegateClass, Configuration singleton) and
+      # ActionMailer::Base (mailer_name, PROTECTED_IVARS, config fallback,
+      # local_prefixes) so the full build + ERB render + deliver_now path works.
+      # Must return 200 with the subject and recipient.
+      mp_key = "GET /mail_probe"
+      mp_status = results[mp_key][0]
+      mp_body = results[mp_key][2]
+      assert_equal 200, mp_status,
+                   "GET /mail_probe (ActionMailer) must return 200 in a worker Ractor (got #{mp_status}: #{mp_body[0..200]})"
+      mp_parsed = JSON.parse(mp_body)
+      assert_equal "Welcome to the Ractor Test App!", mp_parsed["subject"],
+                   "GET /mail_probe must deliver the welcome email with its subject"
+      assert_includes mp_parsed["to"], "signin@test.com",
+                      "GET /mail_probe must deliver to the seeded user's email"
+
+      # --- TODO #4: ActiveStorage has_one_attached in a worker Ractor -----
+      # GET /attach_probe calls `user.avatar.attach(io:, filename:, content_type:)`
+      # inside a worker Ractor. The shim patches ActiveStorage::Blob's
+      # `build_after_unfurling` (block-free), `compute_checksum_in_chunks`
+      # (block-free), `service_name` fallback, `type_for_attribute(:metadata)`
+      # → Type::Serialized, the per-worker `_default_attributes` rebuild
+      # applies the serialized metadata type, `generated_attribute_methods`
+      # modules are captured and shared, `ThroughReflection#source_reflection_
+      # name` respects `options[:source]`, `ThroughReflection#check_validity!`
+      # uses per-worker cache, and Devise's `@@mailer_ref` cvar + callback
+      # `if:`/`unless:` conditions are patched. Must return 200.
+      ap_key = "GET /attach_probe"
+      ap_status = results[ap_key][0]
+      ap_body = results[ap_key][2]
+      assert_equal 200, ap_status,
+                   "GET /attach_probe (ActiveStorage) must return 200 in a worker Ractor (got #{ap_status}: #{ap_body[0..200]})"
+      ap_parsed = JSON.parse(ap_body)
+      assert ap_parsed["attached_after"],
+             "GET /attach_probe must show the avatar as attached after attach"
+      assert_equal "avatar.txt", ap_parsed["filename"],
+                   "GET /attach_probe must return the attached filename"
+      assert_equal 19, ap_parsed["byte_size"],
+                   "GET /attach_probe must return the correct byte_size for 'ractor avatar bytes'"
+
+      # --- ActiveStorage read-back in a worker Ractor --------------------
+      # GET /attach_read_probe reads back the avatar that attach_probe just
+      # persisted. Proves the full read-write cycle works across separate
+      # worker Ractors (attach in one worker, query + read blob in another).
+      arp_key = "GET /attach_read_probe"
+      arp_status = results[arp_key][0]
+      arp_body = results[arp_key][2]
+      assert_equal 200, arp_status,
+                   "GET /attach_read_probe must return 200 in a worker Ractor (got #{arp_status}: #{arp_body[0..200]})"
+      arp_parsed = JSON.parse(arp_body)
+      assert arp_parsed["attached"],
+             "GET /attach_read_probe must show the avatar as attached"
+      assert_equal "avatar.txt", arp_parsed["filename"],
+                   "GET /attach_read_probe must return the attached filename"
+      assert arp_parsed["byte_size"] > 0,
+             "GET /attach_read_probe must return a non-zero byte_size"
+      assert arp_parsed["checksum"].present?,
+             "GET /attach_read_probe must return a blob checksum"
+
+      # --- ActionMailer delivery verification in a worker Ractor ---------
+      # GET /mail_deliver_probe builds, delivers, and inspects the email.
+      # Proves the full mail pipeline: build + ERB render + deliver_now +
+      # test inbox inspection all work inside a worker Ractor.
+      mdp_key = "GET /mail_deliver_probe"
+      mdp_status = results[mdp_key][0]
+      mdp_body = results[mdp_key][2]
+      assert_equal 200, mdp_status,
+                   "GET /mail_deliver_probe must return 200 in a worker Ractor (got #{mdp_status}: #{mdp_body[0..200]})"
+      mdp_parsed = JSON.parse(mdp_body)
+      assert_equal "Welcome to the Ractor Test App!", mdp_parsed["subject"],
+                   "GET /mail_deliver_probe must return the welcome email subject"
+      assert mdp_parsed["delivered_count"] >= 1,
+             "GET /mail_deliver_probe must show at least one delivered email"
+      assert_equal "Welcome to the Ractor Test App!", mdp_parsed["delivered_subject"],
+                   "GET /mail_deliver_probe must show the delivered email subject"
+      assert mdp_parsed["body_includes_welcome"],
+             "GET /mail_deliver_probe body must include 'Welcome'"
 
       # --- Summary of known limitations ---
       all_statuses = results.transform_values { |v| v[0] }

@@ -1,0 +1,9 @@
+<h1>New comment on your post</h1>
+
+<p>Hi <%= @user.email %>,</p>
+
+<p>Someone just commented on your post: <strong><%= @post.title %></strong></p>
+
+<blockquote><%= @comment.body %></blockquote>
+
+<p><%= link_to "View post", "http://localhost:3000/posts/#{@post.id}" %></p>
