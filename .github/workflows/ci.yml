@@ -18,7 +18,7 @@ jobs:
 
       - name: Override Gemfile for CI (use published gem, not local path)
         run: |
-          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.3.1"|' Gemfile
+          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.4.0"|' Gemfile
           bundle install
 
       - name: Scan for common Rails security vulnerabilities using static analysis
@@ -40,7 +40,7 @@ jobs:
 
       - name: Override Gemfile for CI (use published gem, not local path)
         run: |
-          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.3.1"|' Gemfile
+          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.4.0"|' Gemfile
           bundle install
 
       - name: Prepare RuboCop cache
@@ -81,7 +81,7 @@ jobs:
 
       - name: Override Gemfile for CI (use published gem, not local path)
         run: |
-          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.3.1"|' Gemfile
+          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.4.0"|' Gemfile
           bundle install
 
       - name: Run tests (skip ractor integration tests)
@@ -124,7 +124,7 @@ jobs:
 
       - name: Override Gemfile for CI (use published gem, not local path)
         run: |
-          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.3.1"|' Gemfile
+          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.4.0"|' Gemfile
           bundle install
 
       - name: Run System Tests
