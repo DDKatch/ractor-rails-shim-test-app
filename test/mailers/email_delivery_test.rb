@@ -21,14 +21,14 @@ class EmailDeliveryTest < ActionMailer::TestCase
       email.deliver_now
     end
 
-    assert_equal [@user.email], email.to
+    assert_equal [ @user.email ], email.to
     assert_equal "Welcome to the Ractor Test App!", email.subject
     assert_match "Welcome", email.body.encoded
   end
 
   test "welcome_email has correct from address" do
     email = UserMailer.welcome_email(@user)
-    assert_equal ["notifications@example.com"], email.from
+    assert_equal [ "notifications@example.com" ], email.from
   end
 
   test "welcome_email body contains user email" do
@@ -86,6 +86,6 @@ class EmailDeliveryTest < ActionMailer::TestCase
 
     delivered = ActionMailer::Base.deliveries.last
     assert_equal "Welcome to the Ractor Test App!", delivered.subject
-    assert_equal [welcome_user.email], delivered.to
+    assert_equal [ welcome_user.email ], delivered.to
   end
 end

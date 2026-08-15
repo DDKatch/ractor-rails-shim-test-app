@@ -13,6 +13,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      - name: Override Gemfile for CI (use published gem, not local path)
+        run: |
+          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.3.1"|' Gemfile
+          sed -i -e '/^PATH$/,/^$/d' -e 's/ractor-rails-shim!/ractor-rails-shim/' Gemfile.lock
+
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
@@ -31,6 +36,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+
+      - name: Override Gemfile for CI (use published gem, not local path)
+        run: |
+          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.3.1"|' Gemfile
+          sed -i -e '/^PATH$/,/^$/d' -e 's/ractor-rails-shim!/ractor-rails-shim/' Gemfile.lock
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -73,7 +83,7 @@ jobs:
       - name: Override Gemfile for CI (use published gem, not local path)
         run: |
           sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.3.1"|' Gemfile
-          bundle install
+          sed -i -e '/^PATH$/,/^$/d' -e 's/ractor-rails-shim!/ractor-rails-shim/' Gemfile.lock
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
@@ -117,7 +127,7 @@ jobs:
       - name: Override Gemfile for CI (use published gem, not local path)
         run: |
           sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.3.1"|' Gemfile
-          bundle install
+          sed -i -e '/^PATH$/,/^$/d' -e 's/ractor-rails-shim!/ractor-rails-shim/' Gemfile.lock
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
