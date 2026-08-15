@@ -89,6 +89,7 @@ jobs:
           RAILS_ENV: test
           DATABASE_URL: postgresql://dev@127.0.0.1:5432
         run: |
+          bin/rails tailwindcss:build
           bin/rails db:test:prepare
           bin/rails test \
             test/models/ \

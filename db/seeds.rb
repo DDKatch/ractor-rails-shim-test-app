@@ -20,7 +20,7 @@ user = User.where(email: "test@example.com").first_or_create!(
     title: "Post #{i}",
     body: "Body of post #{i}. This is a longer body to meet the minimum length validation.",
     user: user,
-    category: [tech, life, random].sample
+    category: [ tech, life, random ].sample
   )
 end
 

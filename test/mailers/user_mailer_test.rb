@@ -9,7 +9,7 @@ class UserMailerTest < ActionMailer::TestCase
       email.deliver_now
     end
 
-    assert_equal [user.email], email.to
+    assert_equal [ user.email ], email.to
     assert_equal "Welcome to the Ractor Test App!", email.subject
     assert_match "Welcome", email.body.encoded
   end
