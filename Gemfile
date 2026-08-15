@@ -33,7 +33,7 @@ end
 group :development, :test do
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
   gem "rubocop-rails-omakase"
-  gem "brakeman"
+  gem "brakeman", "~> 8.0.6"
   gem "bundler-audit"
   gem "stackprof"
 end
