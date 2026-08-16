@@ -15,11 +15,8 @@ jobs:
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
-
-      - name: Override Gemfile for CI (use published gem, not local path)
-        run: |
-          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.4.0"|' Gemfile
-          bundle install
+        with:
+          bundler-cache: true
 
       - name: Scan for common Rails security vulnerabilities using static analysis
         run: bin/brakeman --no-pager
@@ -37,11 +34,8 @@ jobs:
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
-
-      - name: Override Gemfile for CI (use published gem, not local path)
-        run: |
-          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.4.0"|' Gemfile
-          bundle install
+        with:
+          bundler-cache: true
 
       - name: Prepare RuboCop cache
         uses: actions/cache@v5
@@ -78,11 +72,8 @@ jobs:
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
-
-      - name: Override Gemfile for CI (use published gem, not local path)
-        run: |
-          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.4.0"|' Gemfile
-          bundle install
+        with:
+          bundler-cache: true
 
       - name: Run tests (skip ractor integration tests)
         env:
@@ -121,11 +112,8 @@ jobs:
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
-
-      - name: Override Gemfile for CI (use published gem, not local path)
-        run: |
-          sed -i 's|gem "ractor-rails-shim", path: "../ractor-rails-shim"|gem "ractor-rails-shim", "~> 0.4.0"|' Gemfile
-          bundle install
+        with:
+          bundler-cache: true
 
       - name: Run System Tests
         env:
