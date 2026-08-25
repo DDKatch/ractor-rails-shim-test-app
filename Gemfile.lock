@@ -187,19 +187,19 @@ GEM
       activerecord
       kaminari-core (= 1.2.2)
     kaminari-core (1.2.2)
-    kino (0.2.1-aarch64-linux)
+    kino (0.4.0-aarch64-linux)
       logger (>= 1.6)
       rack (>= 3.1)
-    kino (0.2.1-aarch64-linux-musl)
+    kino (0.4.0-aarch64-linux-musl)
       logger (>= 1.6)
       rack (>= 3.1)
-    kino (0.2.1-arm64-darwin)
+    kino (0.4.0-arm64-darwin)
       logger (>= 1.6)
       rack (>= 3.1)
-    kino (0.2.1-x86_64-linux)
+    kino (0.4.0-x86_64-linux)
       logger (>= 1.6)
       rack (>= 3.1)
-    kino (0.2.1-x86_64-linux-musl)
+    kino (0.4.0-x86_64-linux-musl)
       logger (>= 1.6)
       rack (>= 3.1)
     language_server-protocol (3.17.0.6)
@@ -278,7 +278,7 @@ GEM
     puma (8.0.2)
       nio4r (~> 2.0)
     racc (1.8.1)
-    rack (3.2.6)
+    rack (3.2.7)
     rack-session (2.1.2)
       base64 (>= 0.1.0)
       rack (>= 3.0.0)
@@ -420,7 +420,7 @@ DEPENDENCIES
   falcon
   image_processing (~> 1.2)
   kaminari (~> 1.2)
-  kino (~> 0.2.1)
+  kino (~> 0.4.0)
   msgpack (>= 1.7.0)
   pg (~> 1.4)
   propshaft
@@ -494,11 +494,11 @@ CHECKSUMS
   kaminari-actionview (1.2.2) sha256=1330f6fc8b59a4a4ef6a549ff8a224797289ebf7a3a503e8c1652535287cc909
   kaminari-activerecord (1.2.2) sha256=0dd3a67bab356a356f36b3b7236bcb81cef313095365befe8e98057dd2472430
   kaminari-core (1.2.2) sha256=3bd26fec7370645af40ca73b9426a448d09b8a8ba7afa9ba3c3e0d39cdbb83ff
-  kino (0.2.1-aarch64-linux) sha256=efdc87e98b4df4eb3d57650c3aed5618e48f4f436068a9c8489964031076425a
-  kino (0.2.1-aarch64-linux-musl) sha256=4d7ecd954db2ce5ff62de430a281384c8cd3bc1e71d3a9099c15b91def89cc0b
-  kino (0.2.1-arm64-darwin) sha256=5593b785c0d543d73bf8c97ca5ccd74ea10325c3cbf19453b9f3ca690b08f98a
-  kino (0.2.1-x86_64-linux) sha256=e7713332cae1f898429b87e1eb7df8479971f18a20572e930abae8e1359f4db3
-  kino (0.2.1-x86_64-linux-musl) sha256=e947ad6a576db26a651cba0a553634fe27faff4209a5eba3449268618cd4bfd3
+  kino (0.4.0-aarch64-linux) sha256=b5f25500d15e0a4a6d1ac824d8fe2d6fddf7aa0e5c074d0a50f8f69b6d49d153
+  kino (0.4.0-aarch64-linux-musl) sha256=ab8c8c9ef0ab1db69f81ac096cc67d442ab4670e59db6606ad5bb6776b5a590d
+  kino (0.4.0-arm64-darwin) sha256=d822ba04645fe319684919fd0c05f80c2323065a77bdd48a596c0853f57faac7
+  kino (0.4.0-x86_64-linux) sha256=0ba197d4d5e7f919bfdddab115c5cd29e410fecd6eb39ebc58c40214912297a3
+  kino (0.4.0-x86_64-linux-musl) sha256=e5eac7dc26a9416596aa57271d8275bff2228a14703976e6cc5ae6573a823d1e
   language_server-protocol (3.17.0.6) sha256=5ef2c0c138f8267e1bc631d3328347d354f96724b0af22f2c79516120443b7f0
   lint_roller (1.1.0) sha256=2c0c845b632a7d172cb849cc90c1bce937a28c5c8ccccb50dfd46a485003cc87
   localhost (1.8.0) sha256=df7ea825b4f64949c588c17efac86bc47ddc4460d723778abe933b71759b2701
@@ -541,7 +541,7 @@ CHECKSUMS
   protocol-url (0.7.0) sha256=64af8d4d8ea7daecfd80237f5a4be3fe16892a3f72d32491a6b6d0f411143b7e
   puma (8.0.2) sha256=c8ed871dfbbe66448ea9ffd46692342d9804d4071522b52b5331b7b6e7b686fb
   racc (1.8.1) sha256=4a7f6929691dbec8b5209a0b373bc2614882b55fc5d2e447a21aaa691303d62f
-  rack (3.2.6) sha256=5ed78e1f73b2e25679bec7d45ee2d4483cc4146eb1be0264fc4d94cb5ef212c2
+  rack (3.2.7) sha256=93e13e1c24f93556671d85d2d79fa228c3485815c50d7e2f265b5330c6528fb7
   rack-session (2.1.2) sha256=595434f8c0c3473ae7d7ac56ecda6cc6dfd9d37c0b2b5255330aa1576967ffe8
   rack-test (2.2.0) sha256=005a36692c306ac0b4a9350355ee080fd09ddef1148a5f8b2ac636c720f5c463
   rackup (2.3.1) sha256=6c79c26753778e90983761d677a48937ee3192b3ffef6bc963c0950f94688868
