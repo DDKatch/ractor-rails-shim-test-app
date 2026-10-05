@@ -3,6 +3,15 @@ require "csv"
 class UserMailer < ApplicationMailer
   default from: "notifications@example.com"
 
+  # RAILS_FEATURES.md #116: mailer callbacks — every outgoing mail is
+  # stamped with an audit header (after_action runs after the message
+  # is built, before delivery).
+  after_action :stamp_audit_header
+
+  def stamp_audit_header
+    headers["X-Audit-Campaign"] = "rails-features-audit"
+  end
+
   def welcome_email(user)
     @user = user
     @login_url = new_user_session_url(host: "localhost")

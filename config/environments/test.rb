@@ -43,6 +43,12 @@ Rails.application.configure do
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
 
+  # Action Mailer / Active Job test adapters (standard Rails test-env
+  # defaults): deliver_now collects messages instead of hitting SMTP;
+  # the test queue adapter records enqueues for assert_enqueued_with.
+  config.action_mailer.delivery_method = :test
+  config.action_mailer.perform_deliveries = true
+
   # Active Storage
   config.active_storage.service = :test
 end
