@@ -8,6 +8,9 @@ class Post < ApplicationRecord
   # through the posts params).
   accepts_nested_attributes_for :comments, allow_destroy: true
 
+  # RAILS_FEATURES.md #120: rich text via Action Text.
+  has_rich_text :content
+
   validates :title, presence: true, length: { minimum: 3, maximum: 255 }
   validates :body, presence: true, length: { minimum: 10 }
 

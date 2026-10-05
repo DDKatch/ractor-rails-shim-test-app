@@ -61,4 +61,17 @@ class FeaturesController < ApplicationController
   def current_attrs
     render json: { request_id: Current.request_id }
   end
+
+  # RAILS_FEATURES.md #120: rich text (Action Text) — write + sanitize +
+  # render. The render path goes through rails-html-sanitizer (Nokogiri),
+  # which is the permanent worker limitation.
+  def rich_text
+    post = Post.order(:id).last
+    return head(:not_found) unless post
+
+    if params[:body].present?
+      post.update!(content: params[:body])
+    end
+    @post = post
+  end
 end
