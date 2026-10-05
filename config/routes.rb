@@ -18,6 +18,9 @@ Rails.application.routes.draw do
   get "/attach_probe", to: "stats#attach_probe"
   get "/attach_read_probe", to: "stats#attach_read_probe"
   get "/mail_deliver_probe", to: "stats#mail_deliver_probe"
+  get "/job_enqueue_probe", to: "stats#job_enqueue_probe"
+  get "/downloads/posts_csv", to: "downloads#posts_csv", as: :posts_csv_download
+  get "/downloads/report", to: "downloads#report", as: :report_download
   get "/posts_plain", to: "posts#index_plain", as: :posts_plain
   get "up" => "rails/health#show", as: :rails_health_check
   root "posts#index"
