@@ -2,6 +2,12 @@
 
 Priority: P0 (critical) → P1 (high) → P2 (medium) → P3 (nice-to-have)
 
+> **STATUS (2026-10-05): RESOLVED.** All P0–P2 items below were fixed by
+> `gssencmode: disable` in `database.yml` (no parallel-testing change or SQLite
+> switch was needed). The full suite runs green — see `RAILS_FEATURES.md`
+> "Test Results". This plan is kept for reference only; new work is tracked in
+> `RAILS_FEATURES.md`.
+
 ---
 
 ## P0: Segfault in parallel test fork + PG connect
@@ -105,7 +111,7 @@ workers, making it unreadable.
 
 ## Next Steps
 
-1. Decide whether to disable parallel testing or switch test DB to SQLite
-2. Run full suite after fix to confirm 63/63 pass without segfault
-3. Update RAILS_FEATURES.md with ✅/❌ per feature
-4. Mark integration tests as known-broken in CI config
+1. ~~Decide whether to disable parallel testing or switch test DB to SQLite~~ — DONE (neither; `gssencmode: disable` fixed the fork crash)
+2. ~~Run full suite after fix to confirm 63/63 pass without segfault~~ — DONE (111 runs, 0 failures)
+3. ~~Update RAILS_FEATURES.md with ✅/❌ per feature~~ — DONE (59/60 verified, 1 unsupported)
+4. ~~Mark integration tests as known-broken in CI config~~ — OBSOLETE (integration tests pass; the only skip is RootLoadTest's self-skip when kino :ractor serves 500, which no longer triggers)

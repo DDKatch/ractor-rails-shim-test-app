@@ -466,6 +466,11 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # Ractor (proves the full mail pipeline including test inbox inspection).
   mdp_status, mdp_headers, mdp_body = dispatch(app, "GET", "/mail_deliver_probe", nil, nil)
 
+  # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
+  # KNOWN to fail until the shim captures queue_adapter / GlobalID.app — the
+  # parent assertion documents the failure shape and flips when TODO #5 lands.
+  jep_status, jep_headers, jep_body = dispatch(app, "GET", "/job_enqueue_probe", nil, nil)
+
   # Snapshot the row count AFTER the worker writes, so we can prove the POST
   # persisted exactly one new row.
   final_count = conn.select_value("SELECT count(*) FROM posts").to_i
@@ -491,6 +496,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /attach_probe" => [ap_status, ap_headers, ap_body],
     "GET /attach_read_probe" => [arp_status, arp_headers, arp_body],
     "GET /mail_deliver_probe" => [mdp_status, mdp_headers, mdp_body],
+    "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "POST /users/sign_in" => [si_status, si_headers, si_body],
     "POST /posts (valid token)" => [pc_status, pc_headers, pc_body],
     "POST /posts (bad token)" => [bad_status, bad_headers, bad_body],
@@ -753,6 +759,28 @@ else
                    "GET /mail_deliver_probe must show the delivered email subject"
       assert mdp_parsed["body_includes_welcome"],
              "GET /mail_deliver_probe body must include 'Welcome'"
+
+      # --- TODO #5: ActiveJob enqueue in a worker Ractor (KNOWN FAILING) ---
+      # GET /job_enqueue_probe attempts `WelcomeJob.perform_later(user)` inside
+      # a worker Ractor. Until the shim captures queue_adapter (class_attribute
+      # → nil in workers) and GlobalID.app, the enqueue raises. The assertion
+      # documents the failure shape so a refactor that changes the error class
+      # is noticed; when the shim lands the TODO #5 fix this flips to require
+      # 200 {enqueued: true} — flunk tells you to update the docs.
+      jep_key = "GET /job_enqueue_probe"
+      jep_status = results[jep_key][0]
+      jep_body = results[jep_key][2]
+      jep_parsed = JSON.parse(jep_body) rescue {}
+      if jep_status == 200
+        flunk "TODO #5 (worker-Ractor ActiveJob enqueue) now works — update " \
+              "RAILS_FEATURES.md and the shim's FEATURES.md, then require the 200 here"
+      end
+      assert_equal 500, jep_status,
+                   "GET /job_enqueue_probe is the known-failing TODO #5 probe (got #{jep_status}: #{jep_body[0..200]})"
+      jep_error = jep_parsed["error"].to_s
+      assert_match(/GlobalID|queue_adapter|An app is required|NoMethodError|Ractor|IsolationError/i,
+                   jep_error,
+                   "TODO #5 probe failed with an unexpected error shape")
 
       # --- Summary of known limitations ---
       all_statuses = results.transform_values { |v| v[0] }
