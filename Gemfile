@@ -22,6 +22,8 @@ gem "image_processing", "~> 1.2"
 gem "tzinfo-data", platforms: %i[ windows jruby ]
 gem "msgpack", ">= 1.7.0"
 # csv left the stdlib in Ruby 3.4 — the report mailer + downloads CSV need it.
+gem "solid_cache" # Rails 8 default database-backed cache store
+
 gem "csv"
 
 # Production boot helpers expected by the default Rails 8 Dockerfile
