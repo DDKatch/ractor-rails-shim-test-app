@@ -40,4 +40,19 @@ module ApplicationHelper
   def truncate_with_length(text, length: 100)
     truncate(text.to_s, length: length, separator: " ")
   end
+
+  # Number helpers (RAILS_FEATURES.md #23): thin wrappers over the
+  # ActionView::Helpers::NumberHelper family, exercised in the index view and
+  # in ApplicationHelperTest.
+  def formatted_count(count)
+    number_with_delimiter(count)
+  end
+
+  def formatted_currency(amount)
+    number_to_currency(amount)
+  end
+
+  def formatted_percentage(value)
+    number_to_percentage(value, precision: 1)
+  end
 end

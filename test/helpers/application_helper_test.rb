@@ -30,4 +30,17 @@ class ApplicationHelperTest < ActionView::TestCase
     result = truncate_with_length("Hello World", length: 5)
     assert result.length <= 5
   end
+
+  # Number helpers (RAILS_FEATURES.md #23)
+  test "formatted_count uses a thousands delimiter" do
+    assert_equal "12,345", formatted_count(12345)
+  end
+
+  test "formatted_currency renders currency" do
+    assert_equal "$9.50", formatted_currency(9.5)
+  end
+
+  test "formatted_percentage renders with one decimal" do
+    assert_equal "12.3%", formatted_percentage(12.34)
+  end
 end
