@@ -46,7 +46,6 @@ class EmailDeliveryTest < ActionMailer::TestCase
   test "comment_notification email is delivered" do
     post = Post.create!(title: "Comment Notification Test", body: "Body for comment notification test.", user: @user)
     comment = Comment.create!(body: "Great post!", post: post, user: @user)
-
     email = UserMailer.comment_notification(comment)
 
     assert_emails 1 do
@@ -87,5 +86,25 @@ class EmailDeliveryTest < ActionMailer::TestCase
     delivered = ActionMailer::Base.deliveries.last
     assert_equal "Welcome to the Ractor Test App!", delivered.subject
     assert_equal [ welcome_user.email ], delivered.to
+  end
+
+  # Attachments + CC/BCC audit (RAILS_FEATURES.md #33, #34)
+  test "report_email attaches a CSV and copies the audit addresses" do
+    post = Post.create!(title: "Report Post", body: "Body for the report email test.", user: @user)
+    email = UserMailer.report_email(@user)
+
+    assert_emails 1 do
+      email.deliver_now
+    end
+
+    assert_equal [ @user.email ], email.to
+    assert_equal [ "report-audit@example.com" ], email.cc
+    assert_equal [ "report-archive@example.com" ], email.bcc
+    assert email.attachments.any?, "report_email must carry an attachment"
+    attachment = email.attachments.first
+    assert_equal "posts-report-#{@user.id}.csv", attachment.filename
+    assert_equal "text/csv", attachment.mime_type
+    assert_includes attachment.read, "id,title,comments_count"
+    assert_includes attachment.read, post.title
   end
 end
