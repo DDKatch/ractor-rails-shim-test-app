@@ -7,6 +7,9 @@ class Comment < ApplicationRecord
   # cache-key invalidation is the replacement — see RAILS_FEATURES.md.)
   belongs_to :post, counter_cache: true, touch: true
 
+  # RAILS_FEATURES.md #68: has_one :through (comment -> post -> category).
+  has_one :category, through: :post
+
   validates :body, presence: true, length: { minimum: 2, maximum: 1000 }
 
   after_create :notify_post_author

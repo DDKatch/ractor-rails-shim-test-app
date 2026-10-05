@@ -2,6 +2,11 @@ class Post < ApplicationRecord
   belongs_to :user, optional: true
   belongs_to :category, optional: true
   has_many :comments, dependent: :destroy
+  has_and_belongs_to_many :tags
+
+  # RAILS_FEATURES.md #69: nested attributes (comments built/destroyed
+  # through the posts params).
+  accepts_nested_attributes_for :comments, allow_destroy: true
 
   validates :title, presence: true, length: { minimum: 3, maximum: 255 }
   validates :body, presence: true, length: { minimum: 10 }
