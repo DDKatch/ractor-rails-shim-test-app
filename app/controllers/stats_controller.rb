@@ -171,12 +171,11 @@ class StatsController < ApplicationController
     }, status: 500
   end
 
-  # Probe for shim TODO #5 (KNOWN FAILING in a worker Ractor): ActiveJob
-  # `perform_later` from a worker. `queue_adapter` is a class_attribute (nil
-  # in workers) and `GlobalID.app` isn't captured, so enqueueing raises
-  # (ArgumentError "An app is required" or a Ractor::IsolationError). When the
-  # shim lands the TODO #5 fix, this probe must return 200 {enqueued: true}
-  # — the ractor_server_test.rb assertion flips with it.
+  # Probe for shim TODO #5 (FIXED): ActiveJob `perform_later` from a worker
+  # Ractor now works — the shim deep-freezes GlobalID.app (workers could not
+  # even read the unfrozen class ivar) and patches CGI::Escape/EscapeExt's
+  # class-variable default args; the queue_adapter class_attribute lazily
+  # instantiates a per-worker adapter. Must return 200 {enqueued: true}.
   def job_enqueue_probe
     user = User.find_by(email: "signin@test.com")
     job = WelcomeJob.perform_later(user)

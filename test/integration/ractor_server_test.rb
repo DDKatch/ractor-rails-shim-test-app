@@ -467,8 +467,8 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   mdp_status, mdp_headers, mdp_body = dispatch(app, "GET", "/mail_deliver_probe", nil, nil)
 
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
-  # KNOWN to fail until the shim captures queue_adapter / GlobalID.app — the
-  # parent assertion documents the failure shape and flips when TODO #5 lands.
+  # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
+  # patched) — must return 200 {enqueued: true}.
   jep_status, jep_headers, jep_body = dispatch(app, "GET", "/job_enqueue_probe", nil, nil)
 
   # Snapshot the row count AFTER the worker writes, so we can prove the POST
@@ -760,27 +760,22 @@ else
       assert mdp_parsed["body_includes_welcome"],
              "GET /mail_deliver_probe body must include 'Welcome'"
 
-      # --- TODO #5: ActiveJob enqueue in a worker Ractor (KNOWN FAILING) ---
-      # GET /job_enqueue_probe attempts `WelcomeJob.perform_later(user)` inside
-      # a worker Ractor. Until the shim captures queue_adapter (class_attribute
-      # → nil in workers) and GlobalID.app, the enqueue raises. The assertion
-      # documents the failure shape so a refactor that changes the error class
-      # is noticed; when the shim lands the TODO #5 fix this flips to require
-      # 200 {enqueued: true} — flunk tells you to update the docs.
+      # --- TODO #5: ActiveJob enqueue in a worker Ractor (FIXED in shim) ---
+      # GET /job_enqueue_probe runs `WelcomeJob.perform_later(user)` inside a
+      # worker Ractor. The shim now captures GlobalID.app (deep-frozen class
+      # ivar) and patches CGI::Escape/EscapeExt's class-variable default args
+      # (both walls previously raised IsolationError); the queue_adapter
+      # class_attribute lazily instantiates a per-worker adapter via the IES
+      # writer. The probe must return 200 {enqueued: true}.
       jep_key = "GET /job_enqueue_probe"
       jep_status = results[jep_key][0]
       jep_body = results[jep_key][2]
       jep_parsed = JSON.parse(jep_body) rescue {}
-      if jep_status == 200
-        flunk "TODO #5 (worker-Ractor ActiveJob enqueue) now works — update " \
-              "RAILS_FEATURES.md and the shim's FEATURES.md, then require the 200 here"
-      end
-      assert_equal 500, jep_status,
-                   "GET /job_enqueue_probe is the known-failing TODO #5 probe (got #{jep_status}: #{jep_body[0..200]})"
-      jep_error = jep_parsed["error"].to_s
-      assert_match(/GlobalID|queue_adapter|An app is required|NoMethodError|Ractor|IsolationError/i,
-                   jep_error,
-                   "TODO #5 probe failed with an unexpected error shape")
+      assert_equal 200, jep_status,
+                   "worker-Ractor ActiveJob enqueue (TODO #5) must succeed (got #{jep_status}: #{jep_body[0..200]})"
+      assert_equal true, jep_parsed["enqueued"],
+                   "GET /job_enqueue_probe must report enqueued: true (got #{jep_body[0..200]})"
+      assert_equal "WelcomeJob", jep_parsed["job_class"]
 
       # --- Summary of known limitations ---
       all_statuses = results.transform_values { |v| v[0] }

@@ -77,7 +77,7 @@ Last updated: 2026-10-05
 |--------|-------|----------|
 | ✅ Done | 59 | Everything except #50 (sanitization) — incl. the caching cluster, variants, direct uploads (server side), system tests, rake tasks, generators, console helpers |
 | 🔲 Pending | 0 | — |
-| ⚠️ Known worker-Ractor fail | 1 | ActiveJob `perform_later` / `deliver_later` from a worker Ractor (shim TODO #5 — probed by `GET /job_enqueue_probe`, asserted as known-failing in `ractor_server_test.rb`) |
+| ⚠️ Known worker-Ractor fail | 0 | ~~ActiveJob `perform_later` / `deliver_later`~~ — **fixed in the shim 2026-10-05** (TODO #5): `GlobalID.app` deep-frozen via `SHAREABLE_CLASS_IVARS`, CGI `@@accept_charset` class-variable defaults patched; `GET /job_enqueue_probe` → 200 `{enqueued: true}` from worker Ractors (asserted in `ractor_server_test.rb`) |
 | ⛔ Unsupported | 1 | XSS sanitization (sanitize / simple_format) — Nokogiri ractor-unsafe, unusable in worker Ractors |
 | ❌ Broken | 0 | (Segfaults are env-level, not feature-level) |
 
@@ -92,7 +92,7 @@ Last updated: 2026-10-05
 
 ## Known Ractor Limitations (555 responses in :ractor mode)
 
-As of the last full run (`bin/rails test` → 111 runs, 324 assertions, 0 failures, 0 errors, **0 skips**), no audited route returns 555 or 500 — every audited feature serves from worker Ractors in `:ractor` mode, including the caching stack (fragment / russian-doll / low-level) and the number-helper views.
+As of the last full run (`bin/rails test` → 111 runs, 324 assertions, 0 failures, 0 errors, **0 skips**), no audited route returns 555 or 500 — every audited feature serves from worker Ractors in `:ractor` mode, including the caching stack (fragment / russian-doll / low-level), the number-helper views, and ActiveJob enqueue from a worker (TODO #5 probe → 200 {enqueued: true}).
 
 The one residual worker-Ractor limitation is **HTML sanitization**: the `sanitize` / `simple_format` helpers are backed by Nokogiri, whose document parser is a **ractor-unsafe C method** (Ruby only permits it in the main Ractor). This is unfixable in the shim — full write-up in the shim's `COMPATIBILITY.md` (`actionview — sanitize / simple_format`). This app sidesteps it: user content is rendered escaped via ERB (XSS-safe) with `whitespace-pre-wrap`, so no Nokogiri call runs in workers.
 
