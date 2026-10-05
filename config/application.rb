@@ -35,6 +35,17 @@ module FullTestApp
     # Common ones are `templates`, `generators`, or `middleware`, for example.
     config.autoload_lib(ignore: %w[assets tasks])
 
+    # Mailer previews (RAILS_FEATURES.md #32): serve the previews from
+    # test/mailers/previews via the built-in /rails/mailers engine (dev only).
+    config.action_mailer.preview_paths << Rails.root.join("test/mailers/previews")
+
+    # Console helpers (RAILS_FEATURES.md #59): include ConsoleHelpers into the
+    # top level of every `bin/rails console` session, so `app_stats`,
+    # `make_user`, and `make_post` are callable from the prompt.
+    console do
+      Object.send(:include, ConsoleHelpers)
+    end
+
     # Configuration for the application, engines, and railties goes here.
     #
     # These settings can be overridden in specific environments using the files
