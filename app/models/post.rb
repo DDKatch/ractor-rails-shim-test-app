@@ -14,6 +14,10 @@ class Post < ApplicationRecord
   scope :with_comments, -> { includes(:comments) }
   scope :popular, -> { left_joins(:comments).group(:id).order("COUNT(comments.id) DESC") }
 
+  # RAILS_FEATURES.md #65: enum (worker-safe constants asserted in
+  # test/models/active_record_toolkit_test.rb + a :ractor probe).
+  enum :state, { draft: 0, moderated: 1, archived: 2 }, default: :draft
+
   private
 
   def normalize_title
