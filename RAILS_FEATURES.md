@@ -4,7 +4,7 @@ Goal: verify every core Rails feature that **80%+ of production Rails apps** act
 uses, exercise it end-to-end, and record what works vs what breaks under the
 ractor-rails-shim on Ruby 4.0.6 / Rails 8.1.3.
 
-Last updated: 2026-10-05
+Last updated: 2026-10-06 (full Rails-guides sweep: rows 61–144 added, `TODO.md` created)
 
 ## Feature matrix
 
@@ -71,14 +71,108 @@ Last updated: 2026-10-05
 | 59  |                       | Console helpers                     | ✅ Done | `lib/console_helpers.rb` (`app_stats`, `make_user`, `make_post`), included into `Object` from the `console` hook in `config/application.rb` |
 | 60 |                       | Asset pipeline (propshaft)          | ✅ Done | Propshaft configured |
 
+### Rows 61–144 — full Rails-guides sweep (added 2026-10-06)
+
+Second pass over the full Rails guides (Active Record deep toolkit, remaining
+controller/view helpers, Action Mailbox, Action Text, the Solid stack, Active
+Support subsystems, config/security/testing/CLI). Existing rows 1–60 are
+unchanged. See `TODO.md` for the check / implement / test plan behind every
+🔲 row.
+
+| #  | Category              | Feature                            | Status         | Notes |
+|----|-----------------------|------------------------------------|----------------|-------|
+| 61 | **Active Record**     | CRUD + finder basics (create / find / find_by / update / destroy) | ✅ Done | Every controller + the `:ractor` CRUD flow (create/show/destroy posts & comments from workers) |
+| 62 |                       | Batch processing (`find_each` / `in_batches`) | 🔲 To audit | |
+| 63 |                       | Aggregates (`count`/`sum`/`average`/`min`/`max`, `pluck`/`pick`/`ids`, `exists?`) | ✅ Done (partial) | count/sum exercised by tests + `posts:stats`; `pluck`/`pick`/`exists?` unexercised explicitly |
+| 64 |                       | Grouping (`group` / `having` / `distinct`) | 🔲 To audit | |
+| 65 |                       | `enum`                              | 🔲 To audit | |
+| 66 |                       | Polymorphic associations            | 🔲 To audit | |
+| 67 |                       | STI / Delegated types               | 🔲 To audit | |
+| 68 |                       | `has_and_belongs_to_many` / `has_one :through` | 🔲 To audit | |
+| 69 |                       | Nested attributes (`accepts_nested_attributes_for`) | 🔲 To audit | |
+| 70 |                       | Counter caches                      | ✅ Done | `Comment belongs_to :post, counter_cache: true` (`comments_count` in schema); `posts:recount_comments` repairs. Worker-side counter change only asserted implicitly — TODO adds an explicit assert |
+| 71 |                       | Optimistic locking (`lock_version`) | 🔲 To audit | |
+| 72 |                       | Pessimistic locking (`with_lock`)   | 🔲 To audit | |
+| 73 |                       | Dirty tracking (`changed?`, `changes`, `saved_changes`) | 🔲 To audit | |
+| 74 |                       | `normalizes` (Rails 7.1)            | 🔲 To audit | |
+| 75 |                       | `signed_id` / `find_signed` / `token_for` | ✅ Done (implicit) | ActiveStorage blob URLs are signed ids; direct-upload flow asserted |
+| 76 |                       | `insert_all` / `upsert_all`         | 🔲 To audit | |
+| 77 |                       | Async queries (`load_async`)        | 🔲 To audit | |
+| 78 |                       | `default_scope` / `unscoped`        | 🔲 To audit | |
+| 79 |                       | `strict_loading`                    | 🔲 To audit | |
+| 80 |                       | Composite primary keys              | 🔲 To audit | |
+| 81 |                       | Multiple databases (`connects_to` / `connected_to`) | 🔲 To audit (low) | kino runs single PG |
+| 82 |                       | Postgres types (jsonb, arrays, ranges, uuid PK) | 🔲 To audit | |
+| 83 |                       | Advanced migrations (reversible, up/down, FKs, check constraints) | 🔲 To audit | row 7 covered add_column/add_index only |
+| 84 |                       | Database tasks (`db:prepare` / `migrate` / `rollback`) | ✅ Done | bin/ci Setup step |
+| 85 |                       | Seeds (`db/seeds.rb`)               | ✅ Done | bin/ci Seeds step |
+| 86 |                       | `dependent:` options (destroy / delete_all / nullify) | ✅ Done | Cascades asserted in the ractor test (user delete → posts → comments) |
+| 87 | **Action Controller** | Request / Response objects (headers, params, `request_id`) | ✅ Done (implicit) | Devise + CSRF flows read request state in workers |
+| 88 |                       | Redirects (`redirect_to`)           | ✅ Done | ractor test asserts 302 on `/posts/new` unauth |
+| 89 |                       | `head` / custom status responses    | 🔲 To audit | |
+| 90 |                       | `around_action` callbacks           | ⛔ Known gap | SymbolicTransport records `:around` filters but never replays them (they must wrap the yield) — shim-level design decision, see shim `FEATURES.md` "Known limitations". Decide: shim project or documented exclusion |
+| 91 |                       | Conditional GET (`fresh_when` / `stale?`, ETag / Last-Modified) | 🔲 To audit | |
+| 92 |                       | HTTP authentication (basic / digest / token) | 🔲 To audit | |
+| 93 |                       | Signed / encrypted cookie jars (`cookies.signed` / `.encrypted` / `.permanent`) | 🔲 To audit | session cookie itself ✅ via Devise |
+| 94 |                       | Health endpoint (`/up`)             | 🔲 To audit | route exists (`rails/health#show`); not dispatched by the ractor test yet |
+| 95 |                       | `ActionController::Live` (SSE)      | 🔲 To audit (low) | threads spawn fine in Ractors; streaming writes need checking |
+| 96 | **Action View**       | Collection partials (`render @collection`, spacer, locals) | 🔲 To audit | |
+| 97 |                       | Custom form builders / `fields_for` / nested forms | 🔲 To audit | |
+| 98 |                       | `fields_with_errors` wrappers       | 🔲 To audit | |
+| 99 |                       | `date_select` / `collection_select` | 🔲 To audit | |
+| 100 |                      | Text helpers (`truncate`, `pluralize`, `highlight`) | 🔲 To audit | |
+| 101 |                      | Plain multipart file upload (`file_field` + form encoding) | 🔲 To audit | |
+| 102 |                      | `dom_id` / RecordIdentifier         | 🔲 To audit | |
+| 103 |                      | Localized views (`index.fr.html.erb`) | 🔲 To audit | |
+| 104 |                      | Turbo Frames (server-rendered)      | 🔲 To audit (low) | no JS in this app — server-side rendering only |
+| 105 |                      | Turbo Streams (server-rendered responses / model broadcasts) | 🔲 To audit (low) | same |
+| 106 |                      | Asset helpers (`stylesheet_link_tag` via Propshaft) | ✅ Done | layout ships `stylesheet_link_tag :app` |
+| 107 | **Active Job**       | `retry_on` / `discard_on`           | 🔲 To audit | |
+| 108 |                      | Enqueue options (`wait:`, `wait_until:`, `queue:`, `priority:`) | 🔲 To audit | |
+| 109 |                      | Custom argument serializers         | 🔲 To audit | |
+| 110 |                      | Solid Queue adapter                 | 🔲 To audit | separate dispatcher process; enqueue path is DB writes — likely compatible, verify |
+| 111 |                      | Job test helpers (`assert_enqueued_with`, `perform_enqueued_jobs`) | ✅ Done | `welcome_job_test` |
+| 112 |                      | `perform_now` from a worker         | ✅ Done | `mail_deliver_probe` → `deliver_now` (inline perform) in worker → 200 |
+| 113 | **Action Mailer**    | Interceptors & observers            | 🔲 To audit | |
+| 114 |                      | Multipart emails (HTML + plain text) | ✅ Done | `report_email` renders both parts |
+| 115 |                      | Delivery methods (SMTP settings)    | 🔲 To audit | test delivery ✅ via `:test` adapter; SMTP config unverified |
+| 116 |                      | Mailer callbacks (`before`/`after_action`) | 🔲 To audit | |
+| 117 | **Action Mailbox**   | Routing + relay ingress             | 🔲 To audit | whole component unexercised |
+| 118 |                      | `InboundEmail` processing (mail parsing, `bounce`, deliver-to-mailbox) | 🔲 To audit | `mail` gem is pure Ruby — good chance it works; verify Nokogiri is off the parse path |
+| 119 |                      | ActionMailbox test helpers          | 🔲 To audit | |
+| 120 | **Action Text**      | `has_rich_text` + rich text rendering | 🔲 To audit ⚠️ | **Suspected ⛔**: rendering runs the HTML sanitizer → Nokogiri → likely the same worker-Ractor wall as #50. Verify, then either document as known limitation or rework |
+| 121 |                      | Rich text embeds / direct uploads   | 🔲 To audit | |
+| 122 | **Action Cable**     | Connection identifiers / rejected connections | 🔲 To audit | |
+| 123 |                      | Broadcasts from model callbacks & workers | 🔲 To audit | `:async` adapter is per-process — cross-worker semantics need redis / solid_cable + a decision on kino topology |
+| 124 |                      | Cable adapters (redis / solid_cable) | 🔲 To audit | `config/cable.yml` points at Redis but no redis gem is bundled — fix config or document |
+| 125 | **Active Storage**   | Multiple services / public service  | 🔲 To audit | |
+| 126 |                      | Analyzers / `analyze_later`         | 🔲 To audit | |
+| 127 |                      | Blob download / proxy streaming     | 🔲 To audit | |
+| 128 |                      | Encrypted (custom) service          | 🔲 To audit (low) | |
+| 129 | **Active Support**   | `CurrentAttributes`                 | 🔲 To audit | per-thread/per-Ractor semantics in workers |
+| 130 |                      | Notifications (`subscribe`, custom events) | ✅ Done (cache events) | caching_test subscribes to `cache.*` events; custom events unexercised |
+| 131 |                      | Time zones (`config.time_zone`, `in_time_zone`) | 🔲 To audit | |
+| 132 |                      | Durations / time math (`2.days.ago`, `beginning_of_day`) | 🔲 To audit | pure Ruby — likely fine |
+| 133 |                      | Error reporting (`Rails.error` / ErrorReporter) | 🔲 To audit | worker exceptions → reporter path |
+| 134 |                      | Tagged / broadcast logging          | 🔲 To audit | |
+| 135 | **Security**         | Encrypted credentials               | ✅ Done (implicit) | read at boot in the main Ractor (Devise secret); never read in workers |
+| 136 |                      | force_ssl / HSTS / security headers | 🔲 To audit | |
+| 137 |                      | Permissions-Policy                  | 🔲 To audit | |
+| 138 | **Configuration**    | `config.x` / `config_for` / per-env config | 🔲 To audit | |
+| 139 |                      | Initializers + `to_prepare` hooks   | ✅ Done | Devise, filter_parameters, CSP initializers run at boot |
+| 140 | **Testing**          | Parallel testing                    | 🔲 To audit (low) | |
+| 141 | **CLI**              | `rails runner` / `dbconsole` / `destroy` / `notes` | 🔲 To audit (low) | |
+| 142 |                      | Scaffold-level generators (scaffold / resource / mailer) | 🔲 To audit (low) | #58 covered the helper generator via API |
+| 143 | **Assets**           | `assets:precompile`                 | 🔲 To audit (low) | |
+| 144 | **Engines**          | Mount an isolated engine            | 🔲 To audit (low) | |
+
 ## Summary
 
 | Status | Count | Features |
 |--------|-------|----------|
-| ✅ Done | 59 | Everything except #50 (sanitization) — incl. the caching cluster, variants, direct uploads (server side), system tests, rake tasks, generators, console helpers |
-| 🔲 Pending | 0 | — |
-| ⚠️ Known worker-Ractor fail | 0 | ~~ActiveJob `perform_later` / `deliver_later`~~ — **fixed in the shim 2026-10-05** (TODO #5): `GlobalID.app` deep-frozen via `SHAREABLE_CLASS_IVARS`, CGI `@@accept_charset` class-variable defaults patched; `GET /job_enqueue_probe` → 200 `{enqueued: true}` from worker Ractors (asserted in `ractor_server_test.rb`) |
-| ⛔ Unsupported | 1 | XSS sanitization (sanitize / simple_format) — Nokogiri ractor-unsafe, unusable in worker Ractors |
+| ✅ Done | 75 | All of rows 1–60 except #50, plus 16 already-evidenced rows from the full guides sweep (CRUD, aggregates, counter caches, signed ids, dependent:, redirects, asset helpers, job test helpers, worker perform_now, multipart mail, notifications, credentials, initializers, db tasks, seeds) |
+| 🔲 To audit | 67 | Rows 62–144 marked 🔲 — see `TODO.md` for the check / implement / test plan per row |
+| ⛔ Known limitations | 2 | #50 sanitize / simple_format (Nokogiri, permanent) · #90 `around_action` (SymbolicTransport doesn't replay `:around` filters — shim project or documented exclusion) |
 | ❌ Broken | 0 | (Segfaults are env-level, not feature-level) |
 
 ## Test Results (as of 2026-10-05)
@@ -95,6 +189,8 @@ Last updated: 2026-10-05
 As of the last full run (`bin/rails test` → 111 runs, 324 assertions, 0 failures, 0 errors, **0 skips**), no audited route returns 555 or 500 — every audited feature serves from worker Ractors in `:ractor` mode, including the caching stack (fragment / russian-doll / low-level), the number-helper views, and ActiveJob enqueue from a worker (TODO #5 probe → 200 {enqueued: true}).
 
 The one residual worker-Ractor limitation is **HTML sanitization**: the `sanitize` / `simple_format` helpers are backed by Nokogiri, whose document parser is a **ractor-unsafe C method** (Ruby only permits it in the main Ractor). This is unfixable in the shim — full write-up in the shim's `COMPATIBILITY.md` (`actionview — sanitize / simple_format`). This app sidesteps it: user content is rendered escaped via ERB (XSS-safe) with `whitespace-pre-wrap`, so no Nokogiri call runs in workers.
+
+Caveat on the caching claims: the `:ractor` kino runs `perform_caching = true` with **no cache store configured and no `solid_cache` gem bundled**, so the production store is `:null_store` — the kino caching probes exercise the no-op path. The caching verifications (rows 45–48) are real in the test suite (`:memory_store`); TODO.md P1 item 26 adds Solid Cache to re-verify against a real store in kino.
 
 **What WORKS in :ractor mode:**
 - `GET /posts/new` (unauth) → 302 redirect (Devise before_action replay)
@@ -184,4 +280,4 @@ as literal text.
    Nokogiri Ractor-safety. See the shim's `COMPATIBILITY.md` row for the
    full analysis.
 
-Legend: ✅ Already verified | 🔲 Pending | ⛔ Unsupported (worker-Ractor incompatible by design — e.g. ractor-unsafe C ext; must be avoided/worked around in app code, not a shim bug to fix) | ❌ Known broken
+Legend: ✅ Already verified | 🔲 Pending | ⛔ Unsupported (worker-Ractor incompatible by design — e.g. ractor-unsafe C ext; must be avoided/worked around in app code, not a shim bug to fix) | ❌ Known broken | ⚠️ Suspected limitation — verify before relying on it
