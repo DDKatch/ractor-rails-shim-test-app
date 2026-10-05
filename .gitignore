@@ -75,3 +75,6 @@ config/credentials.yml.enc
 # Error logs and crash dumps from segfault investigation
 /errors.log
 /errors_*.log
+
+# ActiveStorage disk service writes blobs here in :ractor (production) mode
+/storage/

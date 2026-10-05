@@ -3,7 +3,7 @@ source "https://rubygems.org"
 # Local path: develop the shim against this app without cutting a gem.
 # Cut a release and revert to `gem "ractor-rails-shim", "~> 0.4"` before
 # publishing the test-app repo.
-gem "ractor-rails-shim", "~> 0.4.0"
+gem "ractor-rails-shim", path: "../ractor-rails-shim"
 gem "rails", "~> 8.1.3"
 gem "propshaft"
 gem "tailwindcss-rails"
@@ -21,6 +21,8 @@ gem "kaminari", "~> 1.2"
 gem "image_processing", "~> 1.2"
 gem "tzinfo-data", platforms: %i[ windows jruby ]
 gem "msgpack", ">= 1.7.0"
+# csv left the stdlib in Ruby 3.4 — the report mailer + downloads CSV need it.
+gem "csv"
 
 # Production boot helpers expected by the default Rails 8 Dockerfile
 # (`bundle exec bootsnap precompile` and `bin/thrust`). Bootsnap speeds up
@@ -31,9 +33,14 @@ group :production do
 end
 
 group :development, :test do
+  # System tests (RAILS_FEATURES.md #56): capybara drives the :rack_test
+  # driver (no browser needed); selenium-webdriver is preinstalled for
+  # future JS-driven system tests.
+  gem "capybara"
+  gem "selenium-webdriver"
   gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
   gem "rubocop-rails-omakase"
-  gem "brakeman", "~> 8.0.6"
+  gem "brakeman", "~> 8.1"
   gem "bundler-audit"
   gem "stackprof"
 end
