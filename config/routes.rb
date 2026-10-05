@@ -22,6 +22,12 @@ Rails.application.routes.draw do
   get "/downloads/posts_csv", to: "downloads#posts_csv", as: :posts_csv_download
   get "/downloads/report", to: "downloads#report", as: :report_download
   get "/posts_plain", to: "posts#index_plain", as: :posts_plain
+  scope :features do
+    get "/conditional_get", to: "features#conditional_get"
+    get "/cookie_jar", to: "features#cookie_jar"
+    get "/head", to: "features#head_probe"
+    get "/basic_auth", to: "features#basic_auth"
+  end
   get "up" => "rails/health#show", as: :rails_health_check
   root "posts#index"
 end
