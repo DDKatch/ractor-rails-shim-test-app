@@ -1,0 +1,35 @@
+<%# RAILS_FEATURES.md #98, #99, #101: form helpers probe — collection_select,
+    date_select, file_field (multipart), and the fields_with_errors wrapper
+    (the probe record carries a :body error on purpose). %>
+<div class="container mx-auto px-4 py-8">
+  <h1 class="text-2xl font-bold mb-4">Form probe</h1>
+
+  <%= form_with model: @post, url: "/features/form_echo", multipart: true do |f| %>
+    <div class="mb-4">
+      <%= f.label :title %>
+      <%= f.text_field :title, class: "border rounded px-2 py-1" %>
+    </div>
+
+    <div class="mb-4">
+      <%= f.label :body %>
+      <%= f.text_area :body, class: "border rounded px-2 py-1" %>
+    </div>
+
+    <div class="mb-4">
+      <%= f.label :category_id %>
+      <%= f.collection_select :category_id, @categories, :id, :name, include_blank: "None" %>
+    </div>
+
+    <div class="mb-4">
+      <%= f.label :scheduled_at %>
+      <%= f.date_select :scheduled_at, order: [:year, :month, :day] %>
+    </div>
+
+    <div class="mb-4">
+      <%= f.label :attachment %>
+      <%= f.file_field :attachment %>
+    </div>
+
+    <%= f.submit "Echo", class: "bg-blue-600 text-white px-4 py-2 rounded" %>
+  <% end %>
+</div>

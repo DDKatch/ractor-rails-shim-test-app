@@ -42,4 +42,28 @@ class FeaturesControllerTest < ActionDispatch::IntegrationTest
     get rails_health_check_path
     assert_response :success
   end
+
+  test "form_probe renders collection_select, date_select, file_field and the error wrapper" do
+    get "/features/form_probe"
+    assert_response :success
+    assert_select "select[name='post[category_id]']"
+    assert_select "select[name^='post[scheduled_at']"
+    assert_select "input[type='file'][name='post[attachment]']"
+    assert_select "div.field_with_errors textarea#post_body"
+  end
+
+  test "form_echo echoes submitted values including the uploaded file" do
+    post "/features/form_echo",
+         params: {
+           post: {
+             title: "Echo Title", category_id: "1", scheduled_at: "2026-10-06 10:00",
+             attachment: fixture_file_upload("avatar.png", "image/png")
+           }
+         }
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_equal "Echo Title", body["title"]
+    assert_equal "avatar.png", body.dig("attachment", "filename")
+    assert_operator body.dig("attachment", "byte_size"), :>, 0
+  end
 end

@@ -1,0 +1,27 @@
+<%# RAILS_FEATURES.md #46 + #96: inner russian-doll fragment now lives in a
+    collection partial — `render partial: "card", collection: @posts` renders
+    this file once per post. Fragment keys are unchanged (cache card = cache
+    post), so the outer-index / inner-post busting pattern is preserved. %>
+<% cache card do %>
+  <div class="bg-white rounded-lg shadow-md p-6">
+    <div class="flex items-start justify-between">
+      <div>
+        <h2 class="text-xl font-semibold mb-1">
+          <%= link_to card.title, post_path(card), class: "text-blue-600 hover:underline" %>
+        </h2>
+        <p class="text-gray-500 text-sm mb-2">
+          by <%= card.user&.email || "Unknown" %> &middot;
+          <%= time_ago(card.created_at) %>
+          <% if card.category %>
+            &middot; <%= link_to card.category.name, category_path(card.category), class: "text-blue-500 hover:underline" %>
+          <% end %>
+        </p>
+      </div>
+      <%= post_status_badge(card) %>
+    </div>
+    <p class="text-gray-700"><%= truncate_with_length(card.body, length: 200) %></p>
+    <div class="mt-3 text-sm text-gray-500">
+      <%= pluralize(card.comments_count || 0, "comment") %>
+    </div>
+  </div>
+<% end %>

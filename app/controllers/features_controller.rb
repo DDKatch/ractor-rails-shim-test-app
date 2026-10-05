@@ -34,4 +34,26 @@ class FeaturesController < ApplicationController
   def basic_auth
     render json: { basic_auth: true }
   end
+
+  # RAILS_FEATURES.md #98-99, #101: form probe — collection_select,
+  # date_select, file_field (multipart), and the fields_with_errors
+  # wrapper (the probe record carries a :body error on purpose).
+  def form_probe
+    @post = Post.new(title: "Probe")
+    @post.valid? # body missing -> fields_with_errors wraps the body field
+    @categories = Category.all
+  end
+
+  # Echo endpoint for form_probe: returns the submitted values (including
+  # the uploaded file's metadata) as JSON.
+  def form_echo
+    attrs = params.require(:post)
+    upload = attrs[:attachment]
+    render json: {
+      title: attrs[:title],
+      category_id: attrs[:category_id],
+      scheduled_at: attrs[:scheduled_at],
+      attachment: upload.present? ? { filename: upload.original_filename, byte_size: upload.size, content_type: upload.content_type } : nil
+    }
+  end
 end

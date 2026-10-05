@@ -27,6 +27,8 @@ Rails.application.routes.draw do
     get "/cookie_jar", to: "features#cookie_jar"
     get "/head", to: "features#head_probe"
     get "/basic_auth", to: "features#basic_auth"
+    get "/form_probe", to: "features#form_probe"
+    post "/form_echo", to: "features#form_echo"
   end
   get "up" => "rails/health#show", as: :rails_health_check
   root "posts#index"
