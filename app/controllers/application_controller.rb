@@ -5,6 +5,10 @@ class ApplicationController < ActionController::Base
   rescue_from ActiveRecord::RecordNotFound, with: :record_not_found
   rescue_from ActionController::InvalidAuthenticityToken, with: :handle_csrf_error
 
+  # RAILS_FEATURES.md #129: CurrentAttributes — request state available to
+  # models/jobs/views; reset by the executor between requests.
+  before_action { Current.request_id = request.request_id }
+
   private
 
   def record_not_found

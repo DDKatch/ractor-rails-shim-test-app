@@ -66,4 +66,11 @@ class FeaturesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "avatar.png", body.dig("attachment", "filename")
     assert_operator body.dig("attachment", "byte_size"), :>, 0
   end
+  test "CurrentAttributes carries the request_id through a request" do
+    get "/features/current"
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert_not_nil body["request_id"], "Current.request_id was not set by the before_action"
+    assert_equal response.headers["X-Request-Id"], body["request_id"]
+  end
 end

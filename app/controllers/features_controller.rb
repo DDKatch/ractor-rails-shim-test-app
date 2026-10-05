@@ -56,4 +56,9 @@ class FeaturesController < ApplicationController
       attachment: upload.present? ? { filename: upload.original_filename, byte_size: upload.size, content_type: upload.content_type } : nil
     }
   end
+
+  # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
+  def current_attrs
+    render json: { request_id: Current.request_id }
+  end
 end

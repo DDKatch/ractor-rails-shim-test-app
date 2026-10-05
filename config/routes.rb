@@ -29,6 +29,7 @@ Rails.application.routes.draw do
     get "/basic_auth", to: "features#basic_auth"
     get "/form_probe", to: "features#form_probe"
     post "/form_echo", to: "features#form_echo"
+    get "/current", to: "features#current_attrs"
   end
   get "up" => "rails/health#show", as: :rails_health_check
   root "posts#index"
