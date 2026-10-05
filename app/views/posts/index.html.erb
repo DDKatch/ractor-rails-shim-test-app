@@ -10,31 +10,43 @@
     <p class="text-gray-600 mb-4">Showing results for "<%= params[:q] %>"</p>
   <% end %>
 
-  <div class="space-y-4">
-    <% @posts.each do |post| %>
-      <div class="bg-white rounded-lg shadow-md p-6">
-        <div class="flex items-start justify-between">
-          <div>
-            <h2 class="text-xl font-semibold mb-1">
-              <%= link_to post.title, post_path(post), class: "text-blue-600 hover:underline" %>
-            </h2>
-            <p class="text-gray-500 text-sm mb-2">
-              by <%= post.user&.email || "Unknown" %> &middot;
-              <%= time_ago(post.created_at) %>
-              <% if post.category %>
-                &middot; <%= link_to post.category.name, category_path(post.category), class: "text-blue-500 hover:underline" %>
-              <% end %>
-            </p>
+  <p class="text-gray-500 text-sm mb-4">
+    <%= formatted_count(@total_posts) %> <%= "post".pluralize(@total_posts) %> in total
+  </p>
+
+  <%# Fragment caching (RAILS_FEATURES.md #45) + russian doll caching (#46):
+      the outer key includes the page and the newest post update, so any post
+      write (incl. comment touch-through) invalidates the whole index. The
+      inner `cache post` fragments survive sibling post changes. %>
+  <% cache ["posts/index-v1", @posts.current_page, Post.maximum(:updated_at)] do %>
+    <div class="space-y-4">
+      <% @posts.each do |post| %>
+        <% cache post do %>
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <div class="flex items-start justify-between">
+            <div>
+              <h2 class="text-xl font-semibold mb-1">
+                <%= link_to post.title, post_path(post), class: "text-blue-600 hover:underline" %>
+              </h2>
+              <p class="text-gray-500 text-sm mb-2">
+                by <%= post.user&.email || "Unknown" %> &middot;
+                <%= time_ago(post.created_at) %>
+                <% if post.category %>
+                  &middot; <%= link_to post.category.name, category_path(post.category), class: "text-blue-500 hover:underline" %>
+                <% end %>
+              </p>
+            </div>
+            <%= post_status_badge(post) %>
           </div>
-          <%= post_status_badge(post) %>
+          <p class="text-gray-700"><%= truncate_with_length(post.body, length: 200) %></p>
+          <div class="mt-3 text-sm text-gray-500">
+            <%= pluralize(post.comments_count || 0, "comment") %>
+          </div>
         </div>
-        <p class="text-gray-700"><%= truncate_with_length(post.body, length: 200) %></p>
-        <div class="mt-3 text-sm text-gray-500">
-          <%= pluralize(post.comments_count || 0, "comment") %>
-        </div>
-      </div>
-    <% end %>
-  </div>
+        <% end %>
+      <% end %>
+    </div>
+  <% end %>
 
   <div class="mt-6">
     <%= paginate @posts %>

@@ -5,6 +5,10 @@ class PostsController < ApplicationController
   def index
     @posts = Post.recent.page(params[:page] || 1).per(10)
     @posts = @posts.by_title(params[:q]) if params[:q].present?
+
+    # Low-level caching (RAILS_FEATURES.md #47): Rails.cache.fetch memoizes the
+    # total post count for a minute; the block runs only on a cache miss.
+    @total_posts = Rails.cache.fetch("posts/index/total_count", expires_in: 1.minute) { Post.count }
   end
 
   # Same read path as #index, paginated with plain limit/offset instead of

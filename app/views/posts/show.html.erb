@@ -14,7 +14,12 @@
     </div>
 
     <div class="prose max-w-none mb-6">
-      <div class="whitespace-pre-wrap text-gray-700"><%= @post.body %></div>
+      <%# Fragment caching (RAILS_FEATURES.md #45/#46): the body fragment is
+          keyed on the post's cache_key; Comment touch: true bumps updated_at
+          when a comment is added, busting it (see Comment model). %>
+      <% cache @post do %>
+        <div class="whitespace-pre-wrap text-gray-700"><%= @post.body %></div>
+      <% end %>
     </div>
 
     <% if user_signed_in? && @post.user == current_user %>

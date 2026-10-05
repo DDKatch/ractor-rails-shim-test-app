@@ -1,6 +1,11 @@
 class Comment < ApplicationRecord
   belongs_to :user
-  belongs_to :post, counter_cache: true
+  # `touch: true` invalidates cached fragments that embed this post
+  # (RAILS_FEATURES.md #48): comment changes bump post.updated_at, which is
+  # part of the post's cache_key (show-page fragment) and of the index
+  # fragment key. (Rails 8 removed ActionController sweepers; touch-based
+  # cache-key invalidation is the replacement — see RAILS_FEATURES.md.)
+  belongs_to :post, counter_cache: true, touch: true
 
   validates :body, presence: true, length: { minimum: 2, maximum: 1000 }
 

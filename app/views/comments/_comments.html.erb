@@ -2,6 +2,12 @@
   <h2 class="text-2xl font-bold mb-4">Comments (<%= post.comments.count %>)</h2>
 
   <% post.comments.recent.each do |comment| %>
+    <%# Russian doll caching (RAILS_FEATURES.md #46): each comment is an inner
+        fragment nested inside the post's show fragment; comment edits bust
+        via its own cache_key. Note the gravatar/email inside the fragment is
+        keyed on the comment only — user renames won't bust it (acceptable for
+        this audit app; documented in RAILS_FEATURES.md). %>
+    <% cache comment do %>
     <div class="bg-gray-50 rounded-lg p-4 mb-3" id="comment_<%= comment.id %>">
       <div class="flex items-center gap-2 mb-2">
         <%= image_tag gravatar_url(comment.user&.email, size: 24), class: "w-6 h-6 rounded-full", alt: "" %>
@@ -17,6 +23,7 @@
         </div>
       <% end %>
     </div>
+    <% end %>
   <% end %>
 </div>
 
