@@ -59,7 +59,7 @@ Last updated: 2026-10-05
 | 47  |                       | Low-level caching (Rails.cache)     | ✅ Done | `Rails.cache.fetch("posts/index/total_count", expires_in: 1.minute)` in `PostsController#index` — works in worker Ractors too (see shim fixes below) |
 | 48  |                       | Sweepers / cache invalidation       | ✅ Done (replacement) | Rails 8 removed `ActionController::Sweeper`; invalidation is touch-based — `Comment belongs_to :post, touch: true` bumps `post.updated_at`, part of the post cache_key and the index fragment key (asserted) |
 | 49 | **Security**          | CSRF protection                     | ✅ Done | Ractor test verifies token |
-| 50 |                       | XSS sanitization (sanitize / simple_format) | ⛔ Unsupported | Nokogiri-backed `sanitize`/`simple_format` are **unusable in worker Ractors** (ractor-unsafe C method — see shim `COMPATIBILITY.md`); must be avoided in worker-rendered views. App works around it: `posts/show` renders `@post.body` escaped via ERB + `whitespace-pre-wrap` (XSS-safe, no Nokogiri in workers). |
+| 50 |                       | XSS sanitization (sanitize / simple_format) | ⛔ Unsupported | Nokogiri-backed `sanitize`/`simple_format` are **unusable in worker Ractors** (ractor-unsafe C method — see shim `COMPATIBILITY.md`); must be avoided in worker-rendered views. App works around it: `posts/show` renders `@post.body` escaped via ERB + `whitespace-pre-wrap` (XSS-safe, no Nokogiri in workers) — see "Living without Nokogiri (#50)" below for the full pattern + advice. |
 | 51 |                       | SQL injection prevention            | ✅ Done | Uses parameterized queries |
 | 52 |                       | Parameter filtering (filter_parameters) | ✅ Done | Initializer configures filter |
 | 53 |                       | Content Security Policy             | ✅ Done | Initializer sets CSP headers |
@@ -126,5 +126,62 @@ Gemfile points at `path: "../ractor-rails-shim"` during development):
 
 Shim regression specs: `ractor-rails-shim/spec/cache_option_aliases_shareable_spec.rb`
 (766 runs, 0 failures).
+
+## Living without Nokogiri (#50 workaround)
+
+**Yes, it is possible to run this app without ever calling Nokogiri — and
+that is the recommended posture.** The gem cannot be removed from the
+bundle (it is a hard transitive dependency of Rails itself:
+`actionview` → `rails-html-sanitizer` → `Loofah` → `Nokogiri`, plus
+`rails-dom-testing` for DOM test assertions), but it can stay **uncalled**:
+an un-triggered C extension is harmless in worker Ractors.
+
+### What the app does instead
+
+A typical Rails view renders user content with `sanitize` (strips dangerous
+tags, allows some HTML) or `simple_format` (wraps text in `<p>` tags). Both
+go through `rails-html-sanitizer` → Loofah → Nokogiri. `posts/show` replaces
+them with one line:
+
+```erb
+<div class="whitespace-pre-wrap text-gray-700"><%= @post.body %></div>
+```
+
+- **XSS safety** comes from ERB: `<%= %>` HTML-escapes everything, so
+  `<script>alert(1)</script>` renders as inert text (`&lt;script&gt;...`).
+  This is *stricter* than `sanitize`, which whitelists some HTML through —
+  no HTML survives at all here.
+- **Formatting** comes from the Tailwind `whitespace-pre-wrap` class: the
+  browser renders `
+` in the body as line breaks, which is what
+  `simple_format` was doing.
+
+Trade-off: users get no rich text (no `<b>`, no links) — everything renders
+as literal text.
+
+### Advice for this app (and any `:ractor`-mode Rails app)
+
+1. **Never call Nokogiri-backed helpers from worker-rendered code.** The
+   offenders, all Nokogiri/Loofah-backed: `sanitize`, `sanitize_css`,
+   `strip_tags`, `strip_links`, and `simple_format` (it sanitizes by
+   default — `simple_format(text, sanitize: false)` skips it, but then
+   never pass user content through it unescaped).
+2. **Never call `Nokogiri` / `Loofah` directly in worker-reachable paths**
+   (parsing HTML/XML fragments, building documents). The guard is a C
+   method that only the main Ractor may call — the shim's `_install_loofah_patch`
+   makes Loofah's `document_klass` per-Ractor, but it cannot lift the
+   C-extension restriction (no shim patch can).
+3. **Prefer ERB escaping + CSS.** `<%= %>`, `whitespace-pre-wrap`, and
+   friends cover the "untrusted user text" case completely and are free.
+4. **For rich text, use a pure-Ruby formatter** — e.g. `kramdown` (pure
+   Ruby Markdown) — and render its *output* unescaped (`<%= raw %>`) only
+   if you trust the formatter's output model; kramdown escapes raw HTML in
+   the input by default. Avoid `commonmarker`/`nokogiri`-based converters
+   (C exts).
+5. **If you truly need Nokogiri**, the options are: do it in the main
+   Ractor only (`Ractor.main?` guard), or sanitize in a separate process
+   (background job in thread mode / a service), or wait for upstream
+   Nokogiri Ractor-safety. See the shim's `COMPATIBILITY.md` row for the
+   full analysis.
 
 Legend: ✅ Already verified | 🔲 Pending | ⛔ Unsupported (worker-Ractor incompatible by design — e.g. ractor-unsafe C ext; must be avoided/worked around in app code, not a shim bug to fix) | ❌ Known broken
