@@ -9,6 +9,12 @@ class User < ApplicationRecord
   has_one_attached :avatar
   validates :email, presence: true, uniqueness: true
 
+  # ActiveStorage variants (RAILS_FEATURES.md #39): a processed 100x100
+  # thumbnail of the avatar (mini_magick processor, see config/application.rb).
+  def avatar_thumbnail
+    avatar.variant(resize_to_limit: [ 100, 100 ]).processed
+  end
+
   after_create_commit :enqueue_welcome_email
 
   scope :recent, -> { order(created_at: :desc) }

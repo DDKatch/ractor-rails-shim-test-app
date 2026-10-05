@@ -103,6 +103,38 @@ class ActiveStorageTest < ActiveSupport::TestCase
     assert_equal expected, @user.avatar.blob.checksum
   end
 
+  test "avatar variant generates a processed thumbnail" do
+    file = Rack::Test::UploadedFile.new(
+      Rails.root.join("test/fixtures/files/avatar.png"), "image/png"
+    )
+    @user.avatar.attach(file)
+    assert @user.avatar.attached?
+    original_size = @user.avatar.blob.byte_size
+
+    # Variants audit (RAILS_FEATURES.md #39): process a 100x100 thumbnail via
+    # the mini_magick processor (pinned in config/application.rb).
+    variant = @user.avatar_thumbnail
+
+    # The processed variant's TRANSFORMED blob is `variant.image` (`variant.blob`
+    # is the original blob the variant derives from).
+    assert variant.image.present?
+    assert variant.image.byte_size.positive?
+    assert_not_equal original_size, variant.image.byte_size,
+                     "the processed variant should be re-encoded (different byte size than the original)"
+  end
+
+  test "variant processing records the variation" do
+    file = Rack::Test::UploadedFile.new(
+      Rails.root.join("test/fixtures/files/avatar.png"), "image/png"
+    )
+    @user.avatar.attach(file)
+
+    variant = @user.avatar_thumbnail
+    # VariantRecord references the ORIGINAL blob the variant derives from.
+    record = ActiveStorage::VariantRecord.find_by(blob_id: variant.blob.id)
+    assert_not_nil record, "processing a variant must record the variation"
+  end
+
   test "multiple users can have avatars independently" do
     other = User.create!(
       email: "other-avatar-#{SecureRandom.hex(4)}@example.com",
