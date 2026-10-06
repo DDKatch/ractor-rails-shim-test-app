@@ -10,7 +10,7 @@ Last updated: 2026-10-06 (full Rails-guides sweep: rows 61–144 added, `TODO.md
 
 | #  | Category              | Feature                            | Status         | Notes |
 |----|-----------------------|------------------------------------|----------------|-------|
-| 1  | **Active Record**     | Validations (`validates :x, presence:`) | ✅ Done | post_test, category_test, comment_test, user_test |
+| 1  | **Active Record**     | Validations (`validates :x, presence:`) | ✅ Done (main; ❌ in workers) | post_test, category_test, comment_test, user_test. WORKER GAP: `valid?` in a `:ractor`-mode worker silently returns true (empty `:validate` chain — see row 98); invalid records can SAVE in workers. Fix pending (TODO P1) |
 | 2  |                       | Associations (`has_many` / `belongs_to`) | ✅ Done | Post has_many comments; User has_one_attached :avatar |
 | 3  |                       | Callbacks (`before_save`, `after_create`) | ✅ Done | Post after_create; User after_create_commit |
 | 4  |                       | Scopes (named, lambda)             | ✅ Done | Post.published, by_author; Category.popular |
@@ -86,11 +86,11 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | 63 |                       | Aggregates (`count`/`sum`/`average`/`min`/`max`, `pluck`/`pick`/`ids`, `exists?`) | ✅ Done (partial) | count/sum exercised by tests + `posts:stats`; `pluck`/`pick`/`exists?` unexercised explicitly |
 | 64 |                       | Grouping (`group` / `having` / `distinct`) | 🔲 To audit | |
 | 65 |                       | `enum`                              | 🔲 To audit | |
-| 66 |                       | Polymorphic associations            | 🔲 To audit | |
-| 67 |                       | STI / Delegated types               | 🔲 To audit | |
-| 68 |                       | `has_and_belongs_to_many` / `has_one :through` | 🔲 To audit | |
-| 69 |                       | Nested attributes (`accepts_nested_attributes_for`) | 🔲 To audit | |
-| 70 |                       | Counter caches                      | ✅ Done | `Comment belongs_to :post, counter_cache: true` (`comments_count` in schema); `posts:recount_comments` repairs. Worker-side counter change only asserted implicitly — TODO adds an explicit assert |
+| 66 |                       | Polymorphic associations            | ✅ Done | kino `/assoc_probe` in a worker: `AuditLog.create!(loggable: post)` persists `loggable_type: "Post"`, `loggable.class` resolves to Post, `action` column round-trips |
+| 67 |                       | STI / Delegated types               | ✅ Done (STI) | kino `/assoc_probe` in a worker: `Car.create!` persists the `type` discriminator; `Vehicle.where(type: "Car")` queries through the base class. Delegated types not yet exercised |
+| 68 |                       | `has_and_belongs_to_many` / `has_one :through` | ✅ Done (HABTM) | kino `/assoc_probe` in a worker: `post.tags << tag` inserts through the collection (join-row link proven by ids). `has_one :through` not yet exercised |
+| 69 |                       | Nested attributes (`accepts_nested_attributes_for`) | ✅ Done | kino `/assoc_probe` in a worker: `Post.create!(comments_attributes: [...])` INSERTs the nested comment (shim: Rails' `define_non_cyclic_method` Procs → real `def` redefinitions; has_one assoc-scope where-values baked for workers) |
+| 70 |                       | Counter caches                      | ✅ Done | `Comment belongs_to :post, counter_cache: true`; `posts:recount_comments` repairs. kino `/assoc_probe` now asserts `comments_count == 1` after the nested-attributes create IN A WORKER |
 | 71 |                       | Optimistic locking (`lock_version`) | 🔲 To audit | |
 | 72 |                       | Pessimistic locking (`with_lock`)   | 🔲 To audit | |
 | 73 |                       | Dirty tracking (`changed?`, `changes`, `saved_changes`) | 🔲 To audit | |
@@ -109,19 +109,19 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | 86 |                       | `dependent:` options (destroy / delete_all / nullify) | ✅ Done | Cascades asserted in the ractor test (user delete → posts → comments) |
 | 87 | **Action Controller** | Request / Response objects (headers, params, `request_id`) | ✅ Done (implicit) | Devise + CSRF flows read request state in workers |
 | 88 |                       | Redirects (`redirect_to`)           | ✅ Done | ractor test asserts 302 on `/posts/new` unauth |
-| 89 |                       | `head` / custom status responses    | 🔲 To audit | |
+| 89 |                       | `head` / custom status responses    | ✅ Done | kino `GET /features/head` in a worker: `head :no_content` → 204 with an empty body |
 | 90 |                       | `around_action` callbacks           | ⛔ Known gap | SymbolicTransport records `:around` filters but never replays them (they must wrap the yield) — shim-level design decision, see shim `FEATURES.md` "Known limitations". Decide: shim project or documented exclusion |
-| 91 |                       | Conditional GET (`fresh_when` / `stale?`, ETag / Last-Modified) | 🔲 To audit | |
-| 92 |                       | HTTP authentication (basic / digest / token) | 🔲 To audit | |
-| 93 |                       | Signed / encrypted cookie jars (`cookies.signed` / `.encrypted` / `.permanent`) | 🔲 To audit | session cookie itself ✅ via Devise |
-| 94 |                       | Health endpoint (`/up`)             | 🔲 To audit | route exists (`rails/health#show`); not dispatched by the ractor test yet |
+| 91 |                       | Conditional GET (`fresh_when` / `stale?`, ETag / Last-Modified) | ✅ Done | kino `GET /features/conditional_get` in a worker: 200 + ETag header; replaying the ETag as If-None-Match → 304 with an empty body |
+| 92 |                       | HTTP authentication (basic / digest / token) | ✅ Done (basic) | kino `GET /features/basic_auth` in a worker: no credentials → 401 "HTTP Basic: Access denied."; `Basic base64(audit:secret)` → 200. Shim: halt semantics in the callback replay (`performed?` terminator). Digest/token not yet exercised |
+| 93 |                       | Signed / encrypted cookie jars (`cookies.signed` / `.encrypted` / `.permanent`) | ✅ Done | kino `GET /features/cookie_jar` in a worker: `cookies.signed` and `cookies.encrypted` both round-trip (`sig-…` / `enc-…`). `.permanent` is signed+far-expiry, not separately probed |
+| 94 |                       | Health endpoint (`/up`)             | ✅ Done | kino `GET /up` in a worker: 200 + rendered health-check HTML |
 | 95 |                       | `ActionController::Live` (SSE)      | 🔲 To audit (low) | threads spawn fine in Ractors; streaming writes need checking |
-| 96 | **Action View**       | Collection partials (`render @collection`, spacer, locals) | 🔲 To audit | |
+| 96 | **Action View**       | Collection partials (`render @collection`, spacer, locals) | ✅ Done | kino `GET /posts` in a worker: 200 with `render partial: "card", collection: @posts` markup for every post (posts/index → posts/_card) |
 | 97 |                       | Custom form builders / `fields_for` / nested forms | 🔲 To audit | |
-| 98 |                       | `fields_with_errors` wrappers       | 🔲 To audit | |
-| 99 |                       | `date_select` / `collection_select` | 🔲 To audit | |
+| 98 |                       | `fields_with_errors` wrappers       | ❌ Broken (worker) | kino `GET /features/form_probe` in a worker renders the form but NO `field_with_errors` wrapper. Root cause: worker-side `valid?` silently returns true — `Post.__callbacks[:validate]` is EMPTY in workers (the shim's callback replay registry captures `:save`/`:process_action` chains but not `:validate`; raw `__callbacks` reads fall back to the default when `__class_attr_config` is un-shareable). Invalid records SAVE in workers → TODO P1. `valid?` in MAIN works (unit tests) |
+| 99 |                       | `date_select` / `collection_select` | ✅ Done | kino `GET /features/form_probe` in a worker: `collection_select` renders `name="post[category_id]"`; `date_select` renders the `(1i)/(2i)/(3i)` year/month/day subfields. Shim: `DateTimeSelector#sec/min/hour/day/month/year` redefined as string-eval'd defs (upstream `define_method(&block)` Procs are uncallable cross-Ractor) |
 | 100 |                      | Text helpers (`truncate`, `pluralize`, `highlight`) | 🔲 To audit | |
-| 101 |                      | Plain multipart file upload (`file_field` + form encoding) | 🔲 To audit | |
+| 101 |                      | Plain multipart file upload (`file_field` + form encoding) | ✅ Done | kino `POST /features/form_echo` (multipart) in a worker: 200; Rack's multipart parser extracts the text field + the uploaded file (`probe.txt`, 23 bytes, text/plain). Shim: `DelegateClass` `special`-method Procs (incl. `<<`) redefined as real defs |
 | 102 |                      | `dom_id` / RecordIdentifier         | 🔲 To audit | |
 | 103 |                      | Localized views (`index.fr.html.erb`) | 🔲 To audit | |
 | 104 |                      | Turbo Frames (server-rendered)      | 🔲 To audit (low) | no JS in this app — server-side rendering only |
@@ -140,7 +140,7 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | 117 | **Action Mailbox**   | Routing + relay ingress             | ✅ Done | `ApplicationMailbox` routes `:all => :inbox`; `InboxMailbox` records a polymorphic `AuditLog`; migration 20261006000008 |
 | 118 |                      | `InboundEmail` processing (mail parsing, `bounce`, deliver-to-mailbox) | ✅ Done | `test/mailboxes/inbox_mailbox_test.rb` — `receive_inbound_email_from_mail` routes and processes; `mail` gem (pure Ruby) is off the wall |
 | 119 |                      | ActionMailbox test helpers          | ✅ Done | `receive_inbound_email_from_mail` in the mailbox spec (note: `create_inbound_email_from_mail` does NOT route — use the receive_ variant) |
-| 120 | **Action Text**      | `has_rich_text` + rich text rendering | ✅ Done (main Ractor) | `has_rich_text :content` on Post (migration 20261006000007); `test/controllers/rich_text_test.rb` verifies write + sanitize + render in the MAIN ractor. Worker-side rendering runs the sanitizer → Nokogiri → same wall as #50; kino worker probe pending (expect ⛔ in workers — render rich text only in main, like #50's pattern) |
+| 120 | **Action Text**      | `has_rich_text` + rich text rendering | ✅ Done (write + read-back; sanitize ⛔ in workers) | `has_rich_text :content` on Post; `test/controllers/rich_text_test.rb` verifies write + sanitize + render in the MAIN ractor. kino worker probes: `update!(content:)` through the ActionText association PERSISTS in a worker (shim: has_one assoc-scope where-values baked + rich-text record build fixed) and the stored content renders back on a later worker request. KNOWN LIMITATION: the sanitize step (Nokogiri) cannot run in workers (row 50), so stored markup renders HTML-escaped instead of as rich markup — render rich HTML only in main |
 | 121 |                      | Rich text embeds / direct uploads   | 🔲 To audit | embeds (`rich_text_area` + attachables) unexercised |
 | 122 | **Action Cable**     | Connection identifiers / rejected connections | 🔲 To audit | connection/class-level semantics live in the main-Ractor cable server (out of :ractor scope) |
 | 123 |                      | Broadcasts from model callbacks & workers | ✅ Done | kino `GET /cable_probe`: `ActionCable.server.broadcast` inside a worker Ractor persists a `solid_cable_messages` row (shim: per-Ractor cable server + SolidCable configuration). Publish = DB INSERT; client delivery is the main-Ractor poller's concern |
@@ -149,7 +149,7 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | 126 |                      | Analyzers / `analyze_later`         | 🔲 To audit | |
 | 127 |                      | Blob download / proxy streaming     | 🔲 To audit | |
 | 128 |                      | Encrypted (custom) service          | 🔲 To audit (low) | |
-| 129 | **Active Support**   | `CurrentAttributes`                 | 🔲 To audit | per-thread/per-Ractor semantics in workers |
+| 129 | **Active Support**   | `CurrentAttributes`                 | ✅ Done | kino `GET /features/current` in a worker: `Current.request_id` set by a `before_action`, read back by the action (per-request state). Shim: `CurrentAttributes#key`-generated methods redefined shareable |
 | 130 |                      | Notifications (`subscribe`, custom events) | ✅ Done (cache events) | caching_test subscribes to `cache.*` events; custom events unexercised |
 | 131 |                      | Time zones (`config.time_zone`, `in_time_zone`) | 🔲 To audit | |
 | 132 |                      | Durations / time math (`2.days.ago`, `beginning_of_day`) | 🔲 To audit | pure Ruby — likely fine |
