@@ -186,4 +186,41 @@ class StatsController < ApplicationController
       backtrace: e.backtrace.first(5)
     }, status: 500
   end
+
+  # Probe for Action Cable via Solid Cable (RAILS_FEATURES.md #122-124).
+  # Broadcasts from THIS worker Ractor — the publish side of the pubsub —
+  # then polls solid_cable_messages for the row (a broadcast is a DB INSERT;
+  # the writer flushes asynchronously on a worker thread). Delivery to
+  # subscribed clients is the cable server's poller concern (main Ractor,
+  # out of :ractor scope). Returns the row's payload to prove the worker's
+  # message was persisted.
+  def cable_probe
+    before = SolidCable::Message.count
+    max_before = SolidCable::Message.maximum(:id) || 0
+    ActionCable.server.broadcast("cable_probe", { "ractor" => true, "msg" => "worker broadcast" })
+
+    # The Solid Cable adapter broadcasts through a background writer thread
+    # (BatchedBroadcaster), so the row lands a few ms later. Poll for a NEW
+    # row (id > max_before) — polling for ANY row would break instantly on a
+    # pre-existing row and race the writer.
+    row = nil
+    40.times do
+      row = SolidCable::Message.where("id > ?", max_before).order(:created_at).last
+      break if row
+      sleep 0.05
+    end
+
+    render json: {
+      rows_before: before,
+      persisted: !row.nil?,
+      channel: row&.channel,
+      msg: row && JSON.parse(row.payload)["msg"],
+      rows_after: SolidCable::Message.count
+    }
+  rescue => e
+    render json: {
+      error: "#{e.class}: #{e.message}",
+      backtrace: e.backtrace.first(5)
+    }, status: 500
+  end
 end

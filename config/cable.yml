@@ -1,10 +1,33 @@
+# Solid Cable (RAILS_FEATURES.md #122-124): the Rails 8 default
+# database-backed pubsub. All environments point at solid_cable so the
+# :ractor kino can verify worker-side broadcasts as solid_cable_messages
+# rows (broadcast from a worker = DB INSERT; delivery to subscribed
+# clients happens in the process running the cable server, which in the
+# kino is the main Ractor).
+#
+# No connects_to: the kino is single-DB (same decision as solid_cache /
+# solid_queue — the tables live in the primary database), and a
+# connects_to declaration registers the pool under
+# "SolidCable::Record" — a spec name the shim's worker connection
+# handler (pools owned by ActiveRecord::Base) cannot resolve. Omitting
+# it routes cable records through the default ActiveRecord::Base pool.
 development:
-  adapter: async
+  adapter: solid_cable
+  polling_interval: 0.1.seconds
+  message_retention: 1.day
+  writer_batch_size: 4
+  writer_batch_delay: 0.001.seconds
 
 test:
-  adapter: test
+  adapter: solid_cable
+  polling_interval: 0.1.seconds
+  message_retention: 1.day
+  writer_batch_size: 4
+  writer_batch_delay: 0.001.seconds
 
 production:
-  adapter: redis
-  url: <%= ENV.fetch("REDIS_URL") { "redis://localhost:6379/1" } %>
-  channel_prefix: ractor_test_app_production
+  adapter: solid_cable
+  polling_interval: 0.1.seconds
+  message_retention: 1.day
+  writer_batch_size: 4
+  writer_batch_delay: 0.001.seconds

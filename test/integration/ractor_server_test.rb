@@ -212,6 +212,15 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "SELECT count(*) FROM comments WHERE post_id = #{nested_post_id}"
   ).to_i
 
+  # Prewarm lazily-loaded engine models BEFORE prepare_for_ractors!: the test
+  # env does not eager-load, so engine models first referenced by a WORKER
+  # (here: Solid Cable's Message, touched by /cable_probe) would be defined
+  # inside the worker — where connects_to/table_name computation hits
+  # unshareable state. Referencing them in main adds them to
+  # ActiveRecord::Base.descendants so the shim's prewarm + snapshots cover
+  # them, mirroring production eager_load semantics.
+  SolidCable::Message.table_name
+
   unless RactorRailsShim.respond_to?(:prepare_for_ractors!)
     warn "ractor-rails-shim not available"
     puts JSON.generate("error" => "ractor-rails-shim not available")
@@ -471,6 +480,11 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # patched) — must return 200 {enqueued: true}.
   jep_status, jep_headers, jep_body = dispatch(app, "GET", "/job_enqueue_probe", nil, nil)
 
+  # Cable probe (RAILS_FEATURES.md #122-124): ActionCable.server.broadcast
+  # from a worker Ractor — the publish side is a DB INSERT into
+  # solid_cable_messages. Must return 200 {persisted: true, msg: ...}.
+  cbp_status, cbp_headers, cbp_body = dispatch(app, "GET", "/cable_probe", nil, nil)
+
   # Snapshot the row count AFTER the worker writes, so we can prove the POST
   # persisted exactly one new row.
   final_count = conn.select_value("SELECT count(*) FROM posts").to_i
@@ -497,6 +511,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /attach_read_probe" => [arp_status, arp_headers, arp_body],
     "GET /mail_deliver_probe" => [mdp_status, mdp_headers, mdp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
+    "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "POST /users/sign_in" => [si_status, si_headers, si_body],
     "POST /posts (valid token)" => [pc_status, pc_headers, pc_body],
     "POST /posts (bad token)" => [bad_status, bad_headers, bad_body],
@@ -776,6 +791,24 @@ else
       assert_equal true, jep_parsed["enqueued"],
                    "GET /job_enqueue_probe must report enqueued: true (got #{jep_body[0..200]})"
       assert_equal "WelcomeJob", jep_parsed["job_class"]
+
+      # --- Solid Cable: worker-Ractor broadcast is a DB insert (#122-124) ---
+      # GET /cable_probe runs `ActionCable.server.broadcast` inside a worker
+      # Ractor and polls solid_cable_messages for the row. The publish side
+      # must persist the payload (the poller that delivers to subscribed
+      # clients runs in the main Ractor — out of :ractor scope).
+      cbp_key = "GET /cable_probe"
+      cbp_status = results[cbp_key][0]
+      cbp_body = results[cbp_key][2]
+      cbp_parsed = JSON.parse(cbp_body) rescue {}
+      assert_equal 200, cbp_status,
+                   "worker-Ractor cable broadcast must succeed (got #{cbp_status}: #{cbp_body[0..300]})"
+      assert_equal true, cbp_parsed["persisted"],
+                   "GET /cable_probe must report the broadcast persisted (got #{cbp_body[0..300]})"
+      assert_equal "cable_probe", cbp_parsed["channel"]
+      assert_equal "worker broadcast", cbp_parsed["msg"]
+      assert_equal cbp_parsed["rows_before"] + 1, cbp_parsed["rows_after"],
+                   "the worker broadcast must add exactly one solid_cable_messages row"
 
       # --- Summary of known limitations ---
       all_statuses = results.transform_values { |v| v[0] }
