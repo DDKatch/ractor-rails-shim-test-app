@@ -6,10 +6,16 @@ class ApplicationController < ActionController::Base
   rescue_from ActionController::InvalidAuthenticityToken, with: :handle_csrf_error
 
   # RAILS_FEATURES.md #129: CurrentAttributes — request state available to
-  # models/jobs/views; reset by the executor between requests.
-  before_action { Current.request_id = request.request_id }
+  # models/jobs/views; reset by the executor between requests. A NAMED
+  # callback (Symbol filter) so the shim's SymbolicTransport replays it in
+  # worker Ractors (block filters are no-op'd there by design).
+  before_action :set_current_request_id
 
   private
+
+  def set_current_request_id
+    Current.request_id = request.request_id
+  end
 
   def record_not_found
     respond_to do |format|

@@ -223,4 +223,61 @@ class StatsController < ApplicationController
       backtrace: e.backtrace.first(5)
     }, status: 500
   end
+
+  # Associations toolkit worker probe (RAILS_FEATURES.md rows 66-70):
+  # nested attributes, polymorphic, STI, HABTM and the counter cache,
+  # all exercised inside a worker Ractor.
+  def assoc_probe
+    user = User.order(:id).first
+    user ||= User.create!(email: "assoc-probe-#{Time.current.to_i}-#{rand(1000)}@example.com",
+                          password: "password123")
+    marker = Time.current.to_i
+
+    # Row 69: nested attributes create through the parent (worker write path).
+    post = Post.create!(
+      title: "Assoc Probe #{marker}",
+      body: "assoc probe body, long enough for the length validation",
+      user: user,
+      comments_attributes: [{ body: "nested probe comment", user: user }]
+    )
+
+    # Row 66: polymorphic write + query-back.
+    log = AuditLog.create!(loggable: post, action: "assoc.probe")
+
+    # Row 67: STI — a Car persists with its type discriminator and queries
+    # through the base class.
+    car = Car.create!(name: "probe car #{marker}")
+    car_type = car.reload.type
+    car_count_via_base = Vehicle.where(type: "Car").count
+
+    # Row 68: HABTM insert through the collection.
+    tag = Tag.create!(name: "probe-tag-#{marker}")
+    post.tags << tag
+
+    # Row 70: counter cache maintained by the nested-attributes create.
+    post2 = Post.create!(
+      title: "Assoc Diag #{marker}",
+      body: "assoc diag body, long enough for the length validation",
+      user: user,
+      comments_attributes: [{ body: "nested diag comment", user: user }]
+    )
+    post2.save!
+    render json: {
+      nested_comments: post.comments.count,
+      loggable_type: log.loggable_type,
+      loggable_class: log.loggable.class.name,
+      loggable_action: log.action,
+      sti_car_type: car_type,
+      sti_car_count: car_count_via_base,
+      habtm_tag_id: tag.id,
+      habtm_post_id: post.id,
+      nested_post_comments: post2.comments.count,
+      counter_cache: post2.reload.comments_count
+    }
+  rescue => e
+    render json: {
+      error: "#{e.class}: #{e.message}",
+      backtrace: e.backtrace.first(5)
+    }, status: 500
+  end
 end

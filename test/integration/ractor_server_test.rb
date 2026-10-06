@@ -268,24 +268,46 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
       body.to_s[/name="csrf-token"[^>]*content="([^"]*)"/, 1]
   end
 
+  # Frozen default so Ractor.new only ever receives shareable arguments.
+  EMPTY_HEADERS = {}.freeze
+
   # Dispatch ONE request inside a fresh worker Ractor, awaiting the result.
   # `cookie` (a `_full_test_app_session=...` string) is replayed as HTTP_COOKIE
-  # so an authenticated session carries across worker Ractors.
-  def self.dispatch(app, method, path, body, cookie)
+  # so an authenticated session carries across worker Ractors. `extra_headers`
+  # (a FROZEN String-keyed hash) adds raw env entries (e.g. HTTP_IF_NONE_MATCH
+  # for conditional GET, HTTP_AUTHORIZATION for basic auth); `content_type`
+  # overrides the implied urlencoded content type (multipart probe).
+  def self.dispatch(app, method, path, body, cookie, extra_headers = EMPTY_HEADERS, content_type: nil)
     req_body = body || ""
-    Ractor.new(app, method, path, req_body, cookie) do |application, m, p, b, ck|
+    extra = extra_headers || EMPTY_HEADERS
+    Ractor.new(app, method, path, req_body, cookie, extra, (content_type || "")) do |application, m, p, b, ck, hdrs, ctype|
       # Shareable, Ractor-local request IO stand-ins built INSIDE the worker
       # (never cross the boundary).
+      # Ractor-local request IO stand-in built INSIDE the worker (never
+      # crosses the boundary). Body consumption is positional; Rack 3.2's
+      # multipart parser calls input.read(size, outbuf) — both arities are
+      # supported and the outbuf is filled like IO#read does.
       input = Object.new
-      def input.read(len = nil); (@body || "").dup; end
-      def input.rewind; 0; end
-      def input.gets; nil; end
-      def input.each; end
-      def input.size; (@body || "").bytesize; end
-      def input.eof?; true; end
-      def input.close; end
-      def input.closed?; false; end
-      input.instance_variable_set(:@body, b)
+      input.instance_variable_set(:@body, b || "")
+      input.instance_variable_set(:@rrs_pos, 0)
+      class << input
+        def read(len = nil, outbuf = nil)
+          data = @body.to_s
+          pos = @rrs_pos
+          return (outbuf ? outbuf.replace("") : "") if pos >= data.length
+          chunk = len ? data[pos, len] : data[pos..]
+          chunk = "" if chunk.nil?
+          @rrs_pos = pos + chunk.length
+          outbuf ? outbuf.replace(chunk) : chunk
+        end
+        def rewind; @rrs_pos = 0; 0; end
+        def gets; nil; end
+        def each; end
+        def size; (@body || "").bytesize; end
+        def eof?; @rrs_pos >= (@body || "").length; end
+        def close; end
+        def closed?; false; end
+      end
 
       err = Object.new
       def err.write(*); end
@@ -310,10 +332,11 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
         "rack.run_once" => false,
       }
       env["HTTP_COOKIE"] = ck if ck && !ck.empty?
+      hdrs.each { |k, v| env[k] = v if k.is_a?(String) && v.is_a?(String) }
       # Parse a request body (with the CSRF token) for any verb that carries
       # one — not just POST. DELETE /users/sign_out needs it for CSRF validation.
       if b && !b.empty?
-        env["CONTENT_TYPE"] = "application/x-www-form-urlencoded"
+        env["CONTENT_TYPE"] = (ctype && !ctype.empty?) ? ctype : "application/x-www-form-urlencoded"
         env["CONTENT_LENGTH"] = b.bytesize.to_s
       end
 
@@ -485,6 +508,78 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # solid_cable_messages. Must return 200 {persisted: true, msg: ...}.
   cbp_status, cbp_headers, cbp_body = dispatch(app, "GET", "/cable_probe", nil, nil)
 
+  # Associations toolkit probe (RAILS_FEATURES.md #66-70): nested attributes
+  # create, polymorphic AuditLog, STI (Car < Vehicle), HABTM insert and the
+  # counter cache — all inside a worker Ractor.
+  asp_status, asp_headers, asp_body = dispatch(app, "GET", "/assoc_probe", nil, nil)
+
+  # Health endpoint (RAILS_FEATURES.md #94): /up in a worker Ractor.
+  up_status, up_headers, up_body = dispatch(app, "GET", "/up", nil, nil)
+
+  # Head probe (#89): head :no_content in a worker Ractor.
+  fh_status, fh_headers, fh_body = dispatch(app, "GET", "/features/head", nil, nil)
+
+  # Conditional GET (#91): the first GET must be 200 with an ETag; a replay
+  # with If-None-Match must be 304 (stale?/fresh_when in a worker Ractor).
+  cg1_status, cg1_headers, cg1_body = dispatch(app, "GET", "/features/conditional_get", nil, nil)
+  cg_etag = cg1_headers["etag"].to_s
+  cg2_status, cg2_headers, cg2_body =
+    dispatch(app, "GET", "/features/conditional_get", nil, nil,
+             { "HTTP_IF_NONE_MATCH" => cg_etag.dup.freeze }.freeze)
+
+  # Cookie jars (#93): signed + encrypted (permanent) jars round-trip in a
+  # worker Ractor (MessageVerifier / MessageEncryptor paths).
+  cjs_status, cjs_headers, cjs_body = dispatch(app, "GET", "/features/cookie_jar", nil, nil)
+
+  # Form helpers (#98-99, #101): collection_select, date_select, file_field
+  # and the fields_with_errors wrapper must RENDER in a worker Ractor.
+  fp_status, fp_headers, fp_body = dispatch(app, "GET", "/features/form_probe", nil, nil)
+  # The CSRF token is bound to the session created during the GET — replay
+  # that session cookie on the multipart POST (same pattern as the sign-in
+  # flow), otherwise verify_authenticity_token compares against a fresh
+  # session and returns 422.
+  fp_cookie = session_cookie_from(fp_headers["set-cookie"])
+
+  # Multipart echo (#101): POST a multipart/form-data body (text field +
+  # uploaded file) through rack's multipart parser inside a worker Ractor.
+  # CSRF token comes from the freshly rendered form probe page.
+  fp_token = csrf_token_from(fp_body)
+  multipart_boundary = "rrs-multipart-#{Time.current.to_i}"
+  multipart_body = +""
+  multipart_body << "--#{multipart_boundary}\r\n"
+  multipart_body << "Content-Disposition: form-data; name=\"authenticity_token\"\r\n\r\n"
+  multipart_body << fp_token.to_s << "\r\n"
+  multipart_body << "--#{multipart_boundary}\r\n"
+  multipart_body << "Content-Disposition: form-data; name=\"post[title]\"\r\n\r\n"
+  multipart_body << "multipart probe title\r\n"
+  multipart_body << "--#{multipart_boundary}\r\n"
+  multipart_body << "Content-Disposition: form-data; name=\"post[attachment]\"; filename=\"probe.txt\"\r\n"
+  multipart_body << "Content-Type: text/plain\r\n\r\n"
+  multipart_body << "probe file payload line\r\n"
+  multipart_body << "--#{multipart_boundary}--\r\n"
+  fe_status, fe_headers, fe_body =
+    dispatch(app, "POST", "/features/form_echo", multipart_body, fp_cookie,
+             EMPTY_HEADERS, content_type: "multipart/form-data; boundary=#{multipart_boundary}")
+
+  # CurrentAttributes (#129): request_id set by a before_action, read back by
+  # the action — per-request state must work in a worker Ractor.
+  ca_status, ca_headers, ca_body = dispatch(app, "GET", "/features/current", nil, nil)
+
+  # HTTP basic auth (#92): without credentials -> 401; with them -> 200.
+  ba401_status, ba401_headers, ba401_body = dispatch(app, "GET", "/features/basic_auth", nil, nil)
+  ba200_status, ba200_headers, ba200_body =
+    dispatch(app, "GET", "/features/basic_auth", nil, nil,
+             { "HTTP_AUTHORIZATION" => "Basic #{["audit:secret"].pack("m0")}".freeze }.freeze)
+
+  # Rich text render (#120) in a worker Ractor: the render path runs the HTML
+  # sanitizer (Nokogiri) — the permanent worker limitation (#50). Both the
+  # empty render (content nil) and the WRITE+render (body param → update! →
+  # sanitize) are dispatched; the assertions document the observed behavior.
+  rt_status, rt_headers, rt_body = dispatch(app, "GET", "/features/rich_text", nil, nil)
+  rt_write_status, rt_write_headers, rt_write_body =
+    dispatch(app, "GET", "/features/rich_text", nil, nil,
+             { "QUERY_STRING" => "body=%3Cb%3Ebold%3C%2Fb%3E+write+probe".freeze }.freeze)
+
   # Snapshot the row count AFTER the worker writes, so we can prove the POST
   # persisted exactly one new row.
   final_count = conn.select_value("SELECT count(*) FROM posts").to_i
@@ -512,6 +607,19 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /mail_deliver_probe" => [mdp_status, mdp_headers, mdp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
+    "GET /assoc_probe" => [asp_status, asp_headers, asp_body],
+    "GET /up" => [up_status, up_headers, up_body],
+    "GET /features/head" => [fh_status, fh_headers, fh_body],
+    "GET /features/conditional_get" => [cg1_status, cg1_headers, cg1_body],
+    "GET /features/conditional_get (If-None-Match)" => [cg2_status, cg2_headers, cg2_body],
+    "GET /features/cookie_jar" => [cjs_status, cjs_headers, cjs_body],
+    "GET /features/form_probe" => [fp_status, fp_headers, fp_body],
+    "POST /features/form_echo (multipart)" => [fe_status, fe_headers, fe_body],
+    "GET /features/current" => [ca_status, ca_headers, ca_body],
+    "GET /features/basic_auth (401)" => [ba401_status, ba401_headers, ba401_body],
+    "GET /features/basic_auth (200)" => [ba200_status, ba200_headers, ba200_body],
+    "GET /features/rich_text" => [rt_status, rt_headers, rt_body],
+    "GET /features/rich_text (write)" => [rt_write_status, rt_write_headers, rt_write_body],
     "POST /users/sign_in" => [si_status, si_headers, si_body],
     "POST /posts (valid token)" => [pc_status, pc_headers, pc_body],
     "POST /posts (bad token)" => [bad_status, bad_headers, bad_body],
@@ -809,6 +917,144 @@ else
       assert_equal "worker broadcast", cbp_parsed["msg"]
       assert_equal cbp_parsed["rows_before"] + 1, cbp_parsed["rows_after"],
                    "the worker broadcast must add exactly one solid_cable_messages row"
+
+      # --- TODO #22: Associations battery in a worker Ractor (rows 66-70) --
+      # GET /assoc_probe runs in one worker: nested-attributes create
+      # (comments_attributes: → autosave INSERT + counter_cache), polymorphic
+      # belongs_to (AuditLog loggable: → Post), STI (Vehicle base-class query
+      # returning Car), HABTM collection push (post.tags << tag), and
+      # counter_cache maintenance. The shim fixes exercised here:
+      # _shareable_ivar_replacement (reflections memo not poisoned),
+      # _redefine_ar_autosave_methods! (define_non_cyclic_method Procs → real
+      # defs), _install_ar_association_scope_attrs_patch (has_one scope
+      # where-values baked for workers).
+      asp_key = "GET /assoc_probe"
+      asp_status = results[asp_key][0]
+      asp_body = results[asp_key][2]
+      asp_parsed = JSON.parse(asp_body) rescue {}
+      assert_equal 200, asp_status,
+                   "worker-Ractor association battery (rows 66-70) must succeed (got #{asp_status}: #{asp_body[0..300]})"
+      assert_equal 1, asp_parsed["nested_comments"],
+                   "nested attributes (comments_attributes:) must INSERT the nested comment"
+      assert_equal "Post", asp_parsed["loggable_type"],
+                   "polymorphic belongs_to must set loggable_type"
+      assert_equal "Post", asp_parsed["loggable_class"],
+                   "polymorphic loggable must resolve to the Post class in a worker"
+      assert_equal "assoc.probe", asp_parsed["loggable_action"],
+                   "the polymorphic record must persist its action column"
+      assert_equal "Car", asp_parsed["sti_car_type"],
+                   "STI must persist the Car type discriminator"
+      assert asp_parsed["sti_car_count"].to_i > 0,
+             "STI base-class query (Vehicle.where(type: 'Car')) must find persisted Cars"
+      assert asp_parsed["habtm_tag_id"].present? && asp_parsed["habtm_post_id"].present?,
+             "HABTM collection push (post.tags <<) must link tag and post"
+      assert_equal 1, asp_parsed["nested_post_comments"],
+                   "the nested-attributes post must have exactly one persisted comment"
+      assert_equal 1, asp_parsed["counter_cache"],
+                   "counter_cache (comments_count) must be maintained by the nested create"
+
+      # --- Row 94: GET /up health check ------------------------------------
+      up_key = "GET /up"
+      assert_equal 200, results[up_key][0],
+                   "GET /up must return 200 in a worker Ractor (got #{results[up_key][0]})"
+      assert results[up_key][2].to_s.include?("<html"),
+             "GET /up must render the health-check HTML page"
+
+      # --- Row 89: head :no_content ----------------------------------------
+      fh_key = "GET /features/head"
+      assert_equal 204, results[fh_key][0],
+                   "head :no_content must return 204 in a worker Ractor (got #{results[fh_key][0]})"
+      assert_empty results[fh_key][2].to_s,
+                   "head :no_content must produce an empty body"
+
+      # --- Row 91: conditional GET (ETag / If-None-Match → 304) ------------
+      cg_key = "GET /features/conditional_get"
+      assert_equal 200, results[cg_key][0],
+                   "first conditional GET must be 200 (got #{results[cg_key][0]})"
+      cg_etag = results[cg_key][1]["etag"]
+      assert cg_etag.present?,
+             "conditional GET response must carry an ETag header (got #{cg_etag.inspect})"
+      cg2_key = "GET /features/conditional_get (If-None-Match)"
+      assert_equal 304, results[cg2_key][0],
+                   "replayed conditional GET with If-None-Match must be 304 (got #{results[cg2_key][0]})"
+      assert_empty results[cg2_key][2].to_s,
+                   "the 304 response must have an empty body"
+
+      # --- Row 93: signed/encrypted cookie jars ----------------------------
+      cjs_key = "GET /features/cookie_jar"
+      cjs_parsed = JSON.parse(results[cjs_key][2]) rescue {}
+      assert_equal 200, results[cjs_key][0],
+                   "cookie jar probe must return 200 (got #{results[cjs_key][0]})"
+      assert cjs_parsed["signed_read"].to_s.start_with?("sig-"),
+             "cookies.signed must round-trip in a worker (got #{cjs_parsed['signed_read'].inspect})"
+      assert cjs_parsed["encrypted_read"].to_s.start_with?("enc-"),
+             "cookies.encrypted must round-trip in a worker (got #{cjs_parsed['encrypted_read'].inspect})"
+
+      # --- Rows 98-99: form helpers (collection_select, date_select, -------
+      #     file_field) render real markup in a worker Ractor.
+      fp_key = "GET /features/form_probe"
+      fp_status = results[fp_key][0]
+      fp_body = results[fp_key][2]
+      assert_equal 200, fp_status,
+                   "GET /features/form_probe must return 200 (got #{fp_status}: #{fp_body[0..200]})"
+      assert_includes fp_body, "multipart/form-data",
+                      "form_with multipart form must carry the multipart enctype"
+      assert_includes fp_body, 'name="post[category_id]"',
+                      "collection_select must render the category_id select"
+      assert_includes fp_body, 'name="post[scheduled_at(2i)]"',
+                      "date_select must render the (2i) month subfield"
+      assert_includes fp_body, 'type="file"',
+                      "file_field must render a file input"
+
+      # --- Row 101: multipart/form-data POST through Rack's parser ---------
+      fe_key = "POST /features/form_echo (multipart)"
+      fe_status = results[fe_key][0]
+      fe_body = results[fe_key][2]
+      fe_parsed = JSON.parse(fe_body) rescue {}
+      assert_equal 200, fe_status,
+                   "multipart POST (Rack parser in a worker) must return 200 (got #{fe_status}: #{fe_body[0..300]})"
+      assert_equal "multipart probe title", fe_parsed["title"],
+                   "the multipart text field must survive the worker parser"
+      assert_equal "probe.txt", fe_parsed.dig("attachment", "filename"),
+                   "the uploaded file must carry its filename"
+      assert_equal 23, fe_parsed.dig("attachment", "byte_size"),
+                   "the uploaded file must carry the correct byte_size ('probe file payload line')"
+      assert_equal "text/plain", fe_parsed.dig("attachment", "content_type"),
+                   "the uploaded file must carry its content type"
+
+      # --- Row 129: CurrentAttributes per-request state --------------------
+      ca_key = "GET /features/current"
+      ca_parsed = JSON.parse(results[ca_key][2]) rescue {}
+      assert_equal 200, results[ca_key][0],
+                   "CurrentAttributes probe must return 200 (got #{results[ca_key][0]})"
+      assert ca_parsed["request_id"].present?,
+             "Current.request_id (set by before_action, read in the action) must round-trip in a worker"
+
+      # --- Row 92: HTTP basic authentication -------------------------------
+      ba401_key = "GET /features/basic_auth (401)"
+      assert_equal 401, results[ba401_key][0],
+                   "basic auth without credentials must return 401 (got #{results[ba401_key][0]})"
+      assert_includes results[ba401_key][2].to_s, "HTTP Basic: Access denied.",
+                      "the 401 body must be Rails' basic-auth denial message"
+      ba200_key = "GET /features/basic_auth (200)"
+      ba200_parsed = JSON.parse(results[ba200_key][2]) rescue {}
+      assert_equal 200, results[ba200_key][0],
+                   "basic auth with valid credentials must return 200 (got #{results[ba200_key][0]})"
+      assert_equal true, ba200_parsed["basic_auth"],
+                   "the authenticated action must report basic_auth: true"
+
+      # --- Row 120: Action Text write + read-back --------------------------
+      # The write probe (params[:body] → post.update!(content:)) must PERSIST
+      # and render the stored content back. Known limitation (#50): the
+      # sanitize step (Nokogiri) cannot run in a worker, so the stored markup
+      # renders HTML-escaped instead of as rich markup.
+      assert_equal 200, results["GET /features/rich_text"][0],
+                   "GET /features/rich_text (read) must return 200 (got #{results['GET /features/rich_text'][0]})"
+      rtw_key = "GET /features/rich_text (write)"
+      assert_equal 200, results[rtw_key][0],
+                   "rich text WRITE must return 200 (got #{results[rtw_key][0]})"
+      assert_includes results[rtw_key][2].to_s, "&lt;b&gt;bold&lt;/b&gt; write probe",
+                      "the written rich text must persist and render back (HTML-escaped under the sanitize limitation)"
 
       # --- Summary of known limitations ---
       all_statuses = results.transform_values { |v| v[0] }
