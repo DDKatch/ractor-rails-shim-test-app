@@ -4,15 +4,15 @@ Goal: verify every core Rails feature that **80%+ of production Rails apps** act
 uses, exercise it end-to-end, and record what works vs what breaks under the
 ractor-rails-shim on Ruby 4.0.6 / Rails 8.1.3.
 
-Last updated: 2026-10-06 (batch-7 kino pass: rows 66–70, 89, 91–94, 96, 99, 101, 120, 129 worker-verified; tally below)
+Last updated: 2026-10-06 (validate-chain pass: rows 1 (worker) + 98 worker-verified — validator-descriptor replay + fields_with_errors wrapper; tally below)
 
-**Tally: ✅ 94/144 · 🔲 47 · ⛔ 2 · ❌ 1** — keep this line and the Summary table in sync with every row flip.
+**Tally: ✅ 96/144 · 🔲 46 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
 
 ## Feature matrix
 
 | #  | Category              | Feature                            | Status         | Notes |
 |----|-----------------------|------------------------------------|----------------|-------|
-| 1  | **Active Record**     | Validations (`validates :x, presence:`) | ✅ Done (main; ❌ in workers) | post_test, category_test, comment_test, user_test. WORKER GAP: `valid?` in a `:ractor`-mode worker silently returns true (empty `:validate` chain — see row 98); invalid records can SAVE in workers. Fix pending (TODO P1) |
+| 1  | **Active Record**     | Validations (`validates :x, presence:`) | ✅ Done (qualified) | main: post_test, category_test, comment_test, user_test. WORKERS: the shim's callback registry captures validator-object filters as shareable descriptors and replays them (`validates`/`validates_with`/`validate :sym`, `on:`/`except_on:` context-gated) — kino `/features/validations_probe`: invalid → `valid?` false with errors on `:body`, valid → true (before the fix workers returned true with ZERO errors). Qualified: callbacks whose `if:`/`unless:` hold unresolvable Procs are skipped in workers (fail-safe, e.g. the AR encryption guard) and raw `__callbacks[:validate]` reads stay empty (replay-based) |
 | 2  |                       | Associations (`has_many` / `belongs_to`) | ✅ Done | Post has_many comments; User has_one_attached :avatar |
 | 3  |                       | Callbacks (`before_save`, `after_create`) | ✅ Done | Post after_create; User after_create_commit |
 | 4  |                       | Scopes (named, lambda)             | ✅ Done | Post.published, by_author; Category.popular |
@@ -120,7 +120,7 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | 95 |                       | `ActionController::Live` (SSE)      | 🔲 To audit (low) | threads spawn fine in Ractors; streaming writes need checking |
 | 96 | **Action View**       | Collection partials (`render @collection`, spacer, locals) | ✅ Done | kino `GET /posts` in a worker: 200 with `render partial: "card", collection: @posts` markup for every post (posts/index → posts/_card) |
 | 97 |                       | Custom form builders / `fields_for` / nested forms | 🔲 To audit | |
-| 98 |                       | `fields_with_errors` wrappers       | ❌ Broken (worker) | kino `GET /features/form_probe` in a worker renders the form but NO `field_with_errors` wrapper. Root cause: worker-side `valid?` silently returns true — `Post.__callbacks[:validate]` is EMPTY in workers (the shim's callback replay registry captures `:save`/`:process_action` chains but not `:validate`; raw `__callbacks` reads fall back to the default when `__class_attr_config` is un-shareable). Invalid records SAVE in workers → TODO P1. `valid?` in MAIN works (unit tests) |
+| 98 |                       | `fields_with_errors` wrappers       | ✅ Done | kino `GET /features/form_probe` in a worker renders the `field_with_errors` wrapper around the invalid `:body` field. Required the worker-side validate chain (row 1) plus frozen-safe `ActiveModel::Name` memos: `i18n_keys`/`i18n_scope` now compute without the `||=` memo write on a frozen Name (error-message generation previously raised FrozenError post-freeze) |
 | 99 |                       | `date_select` / `collection_select` | ✅ Done | kino `GET /features/form_probe` in a worker: `collection_select` renders `name="post[category_id]"`; `date_select` renders the `(1i)/(2i)/(3i)` year/month/day subfields. Shim: `DateTimeSelector#sec/min/hour/day/month/year` redefined as string-eval'd defs (upstream `define_method(&block)` Procs are uncallable cross-Ractor) |
 | 100 |                      | Text helpers (`truncate`, `pluralize`, `highlight`) | 🔲 To audit | |
 | 101 |                      | Plain multipart file upload (`file_field` + form encoding) | ✅ Done | kino `POST /features/form_echo` (multipart) in a worker: 200; Rack's multipart parser extracts the text field + the uploaded file (`probe.txt`, 23 bytes, text/plain). Shim: `DelegateClass` `special`-method Procs (incl. `<<`) redefined as real defs |
@@ -172,18 +172,18 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 
 | Status | Count | Features |
 |--------|-------|----------|
-| ✅ Done | 94 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the batch-7 kino-verified worker rows: 66–70 (polymorphic, STI, HABTM, nested attributes, counter cache), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 99 (date/collection select), 101 (multipart upload), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔) |
-| — of which qualified ✅ | (12 of the 94) | Partially-scoped rows: 1 (main only — ❌ worker gap, see row 98), 40, 48, 63, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 75, 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
-| 🔲 To audit | 47 | See `TODO.md` for the check / implement / test plan per row |
+| ✅ Done | 96 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 66–70 (polymorphic, STI, HABTM, nested attributes, counter cache), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
+| — of which qualified ✅ | (12 of the 96) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 63, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 75, 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
+| 🔲 To audit | 46 | See `TODO.md` for the check / implement / test plan per row |
 | ⛔ Known limitations | 2 | #50 sanitize / simple_format (Nokogiri, permanent) · #90 `around_action` (SymbolicTransport doesn't replay `:around` filters — shim project or documented exclusion) |
-| ❌ Broken (worker) | 1 | #98 `fields_with_errors` — worker-side `valid?` silently passes (empty `:validate` chain in the shim's replay registry); invalid records can save in workers. TODO P1 #1; row 1 shares this gap |
+| ❌ Broken (worker) | 0 | none — the last ❌ (#98 `fields_with_errors`) was fixed by the validate-chain pass: worker-side `valid?` replays captured validator descriptors, invalid records no longer save in workers |
 
-Tally: 94 + 47 + 2 + 1 = 144. Counts are maintained with each row flip — last updated 2026-10-06 (batch-7 kino pass).
+Tally: 96 + 46 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-06 (validate-chain pass).
 
 ## Test Results (as of 2026-10-06)
 
 ```
-154 runs, 538 assertions, 0 failures, 0 errors, 0 skips
+154 runs, 545 assertions, 0 failures, 0 errors, 0 skips
 ```
 
 - **0 failures, 0 errors, 0 skips** — all feature-level tests pass, including the `:ractor` integration suite (no routes 555)

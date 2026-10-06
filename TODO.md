@@ -17,20 +17,26 @@ row, tick it here, note the evidence (test file / probe status).
 
 ## P1 — likely on real request paths, highest value
 
-1. **[IMPLEMENT] Worker-side validations are silently skipped (rows 1, 98) —
-   in a `:ractor`-mode worker, `Post.new(title: "Probe").valid?` returns TRUE
-   with zero errors: `Post.__callbacks[:validate]` reads EMPTY in workers
-   (the shim's callback replay registry captures `:save`/`:process_action`
-   chains but not `:validate`; raw `__callbacks` reads fall back to the
-   default when `__class_attr_config` is un-shareable). Consequence: invalid
-   records SAVE in workers (silent data corruption; DB constraints are the
-   only backstop). Fix in the shim: capture the `:validate` chain (and any
-   other chain kinds) into the replay registry, or make `__class_attr_config`
-   shareable so raw `__callbacks` reads work. Also blocks row 98
-   (`fields_with_errors` wrapper — the wrapper needs `errors[:body].any?`).
-   Related main-side gap: `errors[:body]` message generation hits
-   `ActiveModel::Name#i18n_keys` memo write on the FROZEN Name
-   (`FrozenError`) — prewarm/patch `i18n_keys` too.
+1. **[DONE ✅] Worker-side validations (rows 1, 98) — fixed in the shim's
+   callback-capture layer: the `set_callback` interceptor now captures
+   validator-object filters (`validates` / `validates_with` →
+   `ActiveModel::Validator` instances) as shareable descriptors
+   `{validator-class-name, attributes, options, declaring-class}` and the
+   SymbolicTransport rebuilds a fresh validator in the worker and calls
+   `.validate(record)`; `:validate` added to DEFAULT_KINDS; phase parsing
+   fixed for no-explicit-phase declarations (`validate :sym` was silently
+   missed); `on:`/`except_on:` captured as context keys and gated on
+   `validation_context`; callbacks with unresolvable Proc conditions are
+   SKIPPED (fail-safe, never over-run); unfrozen validator constants
+   (`LengthValidator::RESERVED_OPTIONS`, `ActiveModel::Error::CALLBACKS_OPTIONS`)
+   deep-frozen at prepare; `ActiveModel::Name#i18n_keys`/`i18n_scope` made
+   frozen-safe (error-message generation no longer FrozenErrors post-freeze).
+   kino evidence: `/features/validations_probe` (invalid → false with
+   `:body` errors, valid → true) + form_probe renders the
+   `field_with_errors` wrapper in workers. Known residual gaps: validators
+   with unresolvable user-Proc if:/unless: don't replay in workers; raw
+   `__callbacks[:validate]` reads in workers still show the empty
+   class-attribute fallback (replay-based, raw chain inspection only).
 2. **[CHECK] AR `enum` (row 65) — add `enum :status, { draft: 0, published: 1 }`-style
    to Category or Post; unit test + worker-render probe. Enum constants are
    class-level frozen Hashes/Strings — exactly the shareability class the shim

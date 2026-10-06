@@ -57,6 +57,23 @@ class FeaturesController < ApplicationController
     }
   end
 
+  # RAILS_FEATURES.md rows 1+98: worker-side model validations. `valid?` must
+  # replay the captured validator descriptors in the worker: false with a
+  # populated errors object for an invalid record, true for a valid one. This
+  # is the row-1 data-integrity guarantee — before the fix, worker `valid?`
+  # returned true with ZERO errors (invalid records saved in workers).
+  def validations_probe
+    valid_record = Post.new(title: "Valid Title", body: "A long enough body")
+    invalid_record = Post.new(title: "Valid Title", body: nil)
+    render json: {
+      valid_record_valid: valid_record.valid?,
+      invalid_record_valid: invalid_record.valid?,
+      invalid_error_attributes: invalid_record.errors.details.keys.sort.map(&:to_s)
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }

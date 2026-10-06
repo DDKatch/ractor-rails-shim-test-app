@@ -31,6 +31,7 @@ get "/assoc_probe", to: "stats#assoc_probe"
     get "/basic_auth", to: "features#basic_auth"
     get "/form_probe", to: "features#form_probe"
     post "/form_echo", to: "features#form_echo"
+    get "/validations_probe", to: "features#validations_probe"
     get "/current", to: "features#current_attrs"
     get "/rich_text", to: "features#rich_text"
   end

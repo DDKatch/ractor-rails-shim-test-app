@@ -534,6 +534,10 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # Form helpers (#98-99, #101): collection_select, date_select, file_field
   # and the fields_with_errors wrapper must RENDER in a worker Ractor.
   fp_status, fp_headers, fp_body = dispatch(app, "GET", "/features/form_probe", nil, nil)
+  # Worker-side model validations (rows 1+98): valid? must replay the captured
+  # validator descriptors in a worker Ractor (false with populated errors for
+  # an invalid record, true for a valid one).
+  vp_status, _vp_headers, vp_body = dispatch(app, "GET", "/features/validations_probe", nil, nil)
   # The CSRF token is bound to the session created during the GET — replay
   # that session cookie on the multipart POST (same pattern as the sign-in
   # flow), otherwise verify_authenticity_token compares against a fresh
@@ -614,6 +618,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/conditional_get (If-None-Match)" => [cg2_status, cg2_headers, cg2_body],
     "GET /features/cookie_jar" => [cjs_status, cjs_headers, cjs_body],
     "GET /features/form_probe" => [fp_status, fp_headers, fp_body],
+    "GET /features/validations_probe" => [vp_status, nil, vp_body],
     "POST /features/form_echo (multipart)" => [fe_status, fe_headers, fe_body],
     "GET /features/current" => [ca_status, ca_headers, ca_body],
     "GET /features/basic_auth (401)" => [ba401_status, ba401_headers, ba401_body],
@@ -1005,6 +1010,28 @@ else
                       "date_select must render the (2i) month subfield"
       assert_includes fp_body, 'type="file"',
                       "file_field must render a file input"
+      # Rows 1+98: the worker-side validate chain now runs (Post#valid? replays
+      # the captured validator descriptors), so the invalid :body field is
+      # wrapped in the fields_with_errors div — which also proves error
+      # message generation works on the frozen ActiveModel::Name (i18n memos).
+      assert_includes fp_body, "field_with_errors",
+                      "fields_with_errors wrapper must wrap the invalid :body field " \
+                      "(worker-side validate chain, rows 1+98)"
+
+      # --- Rows 1+98: worker-side model validations (validate chain replay) --
+      vp_key = "GET /features/validations_probe"
+      vp_status = results[vp_key][0]
+      vp_body = results[vp_key][2]
+      assert_equal 200, vp_status,
+                   "GET /features/validations_probe must return 200 (got #{vp_status}: #{vp_body[0..200]})"
+      vp_json = JSON.parse(vp_body)
+      assert_equal true, vp_json["valid_record_valid"],
+                   "worker-side valid? must return true for a valid Post (got #{vp_json.inspect})"
+      assert_equal false, vp_json["invalid_record_valid"],
+                    "worker-side valid? must return false for a Post with a blank body " \
+                    "(before the validate-chain fix it returned true with zero errors)"
+      assert_includes vp_json["invalid_error_attributes"], "body",
+                      "worker-side errors must carry the :body detail attribute"
 
       # --- Row 101: multipart/form-data POST through Rack's parser ---------
       fe_key = "POST /features/form_echo (multipart)"
