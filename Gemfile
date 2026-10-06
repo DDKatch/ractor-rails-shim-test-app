@@ -1,9 +1,12 @@
 source "https://rubygems.org"
 
-# Local path: develop the shim against this app without cutting a gem.
+# Git source: CI + Dependabot resolve it (a local `path:` gem broke both).
+# For local development point bundler at the working copy instead of the
+# pushed branch (keeps unpushed shim changes visible):
+#   bundle config set --local local.ractor-rails-shim ../ractor-rails-shim
 # Cut a release and revert to `gem "ractor-rails-shim", "~> 0.4"` before
 # publishing the test-app repo.
-gem "ractor-rails-shim", path: "../ractor-rails-shim"
+gem "ractor-rails-shim", github: "DDKatch/ractor-rails-shim", branch: "main"
 gem "rails", "~> 8.1.3"
 gem "propshaft"
 gem "tailwindcss-rails"
