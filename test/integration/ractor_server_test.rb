@@ -538,6 +538,9 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # validator descriptors in a worker Ractor (false with populated errors for
   # an invalid record, true for a valid one).
   vp_status, _vp_headers, vp_body = dispatch(app, "GET", "/features/validations_probe", nil, nil)
+  # Enum probe (row 65): worker-side enum bangs/predicates/scopes/values
+  # reader + the replayed EnumType attribute registration.
+  ep_status, _ep_headers, ep_body = dispatch(app, "GET", "/features/enum_probe", nil, nil)
   # The CSRF token is bound to the session created during the GET — replay
   # that session cookie on the multipart POST (same pattern as the sign-in
   # flow), otherwise verify_authenticity_token compares against a fresh
@@ -619,6 +622,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/cookie_jar" => [cjs_status, cjs_headers, cjs_body],
     "GET /features/form_probe" => [fp_status, fp_headers, fp_body],
     "GET /features/validations_probe" => [vp_status, nil, vp_body],
+    "GET /features/enum_probe" => [ep_status, nil, ep_body],
     "POST /features/form_echo (multipart)" => [fe_status, fe_headers, fe_body],
     "GET /features/current" => [ca_status, ca_headers, ca_body],
     "GET /features/basic_auth (401)" => [ba401_status, ba401_headers, ba401_body],
@@ -1032,6 +1036,31 @@ else
                     "(before the validate-chain fix it returned true with zero errors)"
       assert_includes vp_json["invalid_error_attributes"], "body",
                       "worker-side errors must carry the :body detail attribute"
+
+      # --- Row 65: worker-side ActiveRecord enum ---------------------------
+      ep_key = "GET /features/enum_probe"
+      ep_status = results[ep_key][0]
+      ep_body = results[ep_key][2]
+      assert_equal 200, ep_status,
+                   "GET /features/enum_probe must return 200 (got #{ep_status}: #{ep_body[0..200]})"
+      ep_json = JSON.parse(ep_body)
+      assert_equal "draft", ep_json["default_state"],
+                   "worker-side enum default must cast through the replayed EnumType " \
+                   "(before the fix it returned raw 0)"
+      assert_equal "moderated", ep_json["bang_state"],
+                   "worker-side `moderated!` must persist the enum label"
+      assert_equal true, ep_json["pred_moderated"],
+                   "worker-side `moderated?` must run (real def, not an un-shareable Proc)"
+      assert_equal false, ep_json["pred_draft"],
+                   "worker-side `draft?` must be false after `moderated!`"
+      assert_equal 1, ep_json["states_moderated"],
+                   "worker-side `Post.states` must return the frozen labels/values hash"
+      assert_operator ep_json["scope_moderated_count"], :>=, 1,
+                     "worker-side `Post.moderated` scope must query (was a NameError before the fix)"
+      assert_operator ep_json["scope_not_draft_count"], :>=, 1,
+                     "worker-side `Post.not_draft` negative scope must query"
+      assert_equal true, ep_json["invalid_raises"],
+                   "worker-side invalid enum assignment must raise ArgumentError like main"
 
       # --- Row 101: multipart/form-data POST through Rack's parser ---------
       fe_key = "POST /features/form_echo (multipart)"

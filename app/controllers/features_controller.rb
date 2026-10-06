@@ -74,6 +74,31 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #65: ActiveRecord enum — default value, bang methods,
+  # predicates, the class-level values reader and per-value scopes, all
+  # exercised in a worker Ractor (real defs + shared EnumType registration).
+  def enum_probe
+    record = Post.new(title: "Enum Probe", body: "A long enough body")
+    record.moderated!
+    render json: {
+      default_state: Post.new.state,
+      bang_state: record.state,
+      pred_moderated: record.moderated?,
+      pred_draft: record.draft?,
+      states_moderated: Post.states["moderated"],
+      scope_moderated_count: Post.moderated.count,
+      scope_not_draft_count: Post.not_draft.count,
+      invalid_raises: begin
+        Post.new.state = :bogus
+        false
+      rescue ArgumentError
+        true
+      end
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }
