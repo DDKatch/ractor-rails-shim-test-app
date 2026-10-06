@@ -544,6 +544,8 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # Dirty probe (row 73): worker-side changed?/changes/saved_changes on a
   # mutated + saved record.
   dp_status, _dp_headers, dp_body = dispatch(app, "GET", "/features/dirty_probe", nil, nil)
+  # Batch probe (row 62): worker-side find_each / find_in_batches / in_batches.
+  bp_status, _bp_headers, bp_body = dispatch(app, "GET", "/features/batch_probe", nil, nil)
   # The CSRF token is bound to the session created during the GET — replay
   # that session cookie on the multipart POST (same pattern as the sign-in
   # flow), otherwise verify_authenticity_token compares against a fresh
@@ -627,6 +629,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/validations_probe" => [vp_status, nil, vp_body],
     "GET /features/enum_probe" => [ep_status, nil, ep_body],
     "GET /features/dirty_probe" => [dp_status, nil, dp_body],
+    "GET /features/batch_probe" => [bp_status, nil, bp_body],
     "POST /features/form_echo (multipart)" => [fe_status, fe_headers, fe_body],
     "GET /features/current" => [ca_status, ca_headers, ca_body],
     "GET /features/basic_auth (401)" => [ba401_status, ba401_headers, ba401_body],
@@ -1085,6 +1088,20 @@ else
                    "worker-side `changed?` must be false after save"
       assert_equal true, dp_json["saved_changes_title"],
                    "worker-side `saved_changes['title']` must hold the [old, new] pair"
+
+      # --- Row 62: worker-side batch processing -----------------------------
+      bp_key = "GET /features/batch_probe"
+      bp_status = results[bp_key][0]
+      bp_body = results[bp_key][2]
+      assert_equal 200, bp_status,
+                   "GET /features/batch_probe must return 200 (got #{bp_status}: #{bp_body[0..200]})"
+      bp_json = JSON.parse(bp_body)
+      assert_equal bp_json["total"], bp_json["find_each"],
+                   "worker-side find_each must visit every post"
+      assert_equal bp_json["total"], bp_json["find_in_batches"],
+                   "worker-side find_in_batches must visit every post"
+      assert_equal bp_json["total"], bp_json["in_batches_ids"],
+                   "worker-side in_batches relation.ids must cover every post"
 
       # --- Row 101: multipart/form-data POST through Rack's parser ---------
       fe_key = "POST /features/form_echo (multipart)"

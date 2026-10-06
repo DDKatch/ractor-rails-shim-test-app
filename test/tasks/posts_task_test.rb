@@ -15,11 +15,12 @@ class PostsTaskTest < ActiveSupport::TestCase
     @user&.destroy rescue nil
   end
 
-  test "posts:stats prints the row counts" do
+  test "posts:stats prints the row counts (find_each-batched title census)" do
     Rake::Task["posts:stats"].reenable
     out, _err = capture_io { Rake::Task["posts:stats"].invoke }
     assert_match(/Posts: \d+/, out)
     assert_match(/Users: \d+/, out)
+    assert_match(/Titled: \d+/, out)
   end
 
   test "posts:recount_comments repairs the denormalized counter" do

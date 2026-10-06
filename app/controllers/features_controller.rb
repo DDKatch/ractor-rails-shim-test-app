@@ -118,6 +118,18 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #62: batch processing — find_each / find_in_batches /
+  # in_batches exercised in a worker Ractor.
+  def batch_probe
+    counts = { find_each: 0, find_in_batches: 0, in_batches_ids: 0 }
+    Post.find_each(batch_size: 10) { counts[:find_each] += 1 }
+    Post.find_in_batches(batch_size: 10) { |batch| counts[:find_in_batches] += batch.size }
+    Post.in_batches(of: 10) { |relation| counts[:in_batches_ids] += relation.ids.size }
+    render json: counts.merge(total: Post.count)
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }

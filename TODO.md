@@ -50,8 +50,10 @@ row, tick it here, note the evidence (test file / probe status).
    lifecycle (`changed?` on new + mutated records, `changes` [old, new]
    pair, post-save `saved_changes`); kino `/features/dirty_probe`: identical
    values in a worker (mutation → save). No shim changes needed.
-4. **[CHECK] AR batch processing (row 62) — switch `posts:stats` to
-   `find_each`; run in a worker (rake in kino context or a probe route).
+4. **[DONE ✅]** AR batch processing (row 62) — `posts:stats` now iterates
+   with `find_each(batch_size: 100)` (Titled census; `recount_comments`
+   already used find_each); kino `/features/batch_probe`: find_each /
+   find_in_batches / in_batches each visit every post in a worker.
 5. **[CHECK] Aggregates completion (row 63) — add `group`/`having`/`pluck`/
    `exists?` to `posts:stats` or a test.
 6. **[CHECK] Grouping / distinct (row 64) — same probe as #4.

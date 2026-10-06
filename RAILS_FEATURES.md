@@ -6,7 +6,7 @@ ractor-rails-shim on Ruby 4.0.6 / Rails 8.1.3.
 
 Last updated: 2026-10-06 (validate-chain pass: rows 1 (worker) + 98 worker-verified — validator-descriptor replay + fields_with_errors wrapper; tally below)
 
-**Tally: ✅ 98/144 · 🔲 44 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
+**Tally: ✅ 99/144 · 🔲 43 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
 
 ## Feature matrix
 
@@ -84,7 +84,7 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | #  | Category              | Feature                            | Status         | Notes |
 |----|-----------------------|------------------------------------|----------------|-------|
 | 61 | **Active Record**     | CRUD + finder basics (create / find / find_by / update / destroy) | ✅ Done | Every controller + the `:ractor` CRUD flow (create/show/destroy posts & comments from workers) |
-| 62 |                       | Batch processing (`find_each` / `in_batches`) | 🔲 To audit | |
+| 62 |                       | Batch processing (`find_each` / `in_batches`) | ✅ Done | kino `/features/batch_probe` in a worker: find_each/find_in_batches/in_batches each visit all 16 posts (totals equal Post.count). `posts:stats` now reports a find_each-batched title census; posts:recount_comments already used find_each |
 | 63 |                       | Aggregates (`count`/`sum`/`average`/`min`/`max`, `pluck`/`pick`/`ids`, `exists?`) | ✅ Done (partial) | count/sum exercised by tests + `posts:stats`; `pluck`/`pick`/`exists?` unexercised explicitly |
 | 64 |                       | Grouping (`group` / `having` / `distinct`) | 🔲 To audit | |
 | 65 |                       | `enum`                              | ✅ Done | kino `/features/enum_probe` in a worker: `state` default casts to `"draft"` through the replayed EnumType (before the fix: raw `0`), `moderated!` + `moderated?`/`draft?` run as real defs (before: "un-shareable Proc" error), `state = :moderated` round-trips (before: `nil`), `Post.states` + `Post.moderated`/`Post.not_draft` scopes query, invalid assignment raises ArgumentError like main. Shim: `_redefine_ar_enum_methods!` (real defs) + `_share_ar_pending_attribute_modifications!` (EnumTypeDecorator replay) |
@@ -172,18 +172,18 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 
 | Status | Count | Features |
 |--------|-------|----------|
-| ✅ Done | 98 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–70 (polymorphic, STI, HABTM, nested attributes, counter cache), 73 (dirty tracking in workers), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
+| ✅ Done | 99 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 62 (batch processing in workers), 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–70 (polymorphic, STI, HABTM, nested attributes, counter cache), 73 (dirty tracking in workers), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
 | — of which qualified ✅ | (12 of the 96) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 63, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 75, 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
-| 🔲 To audit | 44 | See `TODO.md` for the check / implement / test plan per row |
+| 🔲 To audit | 43 | See `TODO.md` for the check / implement / test plan per row |
 | ⛔ Known limitations | 2 | #50 sanitize / simple_format (Nokogiri, permanent) · #90 `around_action` (SymbolicTransport doesn't replay `:around` filters — shim project or documented exclusion) |
 | ❌ Broken (worker) | 0 | none — the last ❌ (#98 `fields_with_errors`) was fixed by the validate-chain pass: worker-side `valid?` replays captured validator descriptors, invalid records no longer save in workers |
 
-Tally: 98 + 44 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-06 (enum pass row 65, dirty-tracking pass row 73).
+Tally: 99 + 43 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-06 (enum 65, dirty 73, batch 62).
 
 ## Test Results (as of 2026-10-06)
 
 ```
-155 runs, 571 assertions, 0 failures, 0 errors, 0 skips
+155 runs, 577 assertions, 0 failures, 0 errors, 0 skips
 ```
 
 - **0 failures, 0 errors, 0 skips** — all feature-level tests pass, including the `:ractor` integration suite (no routes 555)
