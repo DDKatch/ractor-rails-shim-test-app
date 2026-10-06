@@ -69,4 +69,26 @@ class PostTest < ActiveSupport::TestCase
       post.destroy
     end
   end
+
+  test "aggregates: sum/average/min/max/pluck/pick/ids/exists?" do
+    # Fixtures + posts created above guarantee a non-empty table.
+    assert_kind_of Integer, Post.sum(:id)
+    assert_kind_of BigDecimal, Post.average(:id)
+    assert Post.minimum(:id) <= Post.maximum(:id)
+    titles = Post.limit(3).pluck(:title)
+    assert_equal [3, Post.count].min, titles.size
+    assert_kind_of String, Post.order(:id).pick(:title)
+    assert_kind_of Integer, Post.ids.first
+    assert Post.exists?
+    assert_not Post.where("1 = 0").exists?
+  end
+
+  test "grouping: group/having/distinct" do
+    grouped = Post.group(:state).count
+    assert_kind_of Hash, grouped
+    assert_operator grouped.values.sum, :>=, 1
+    filtered = Post.group(:state).having("COUNT(id) > 0").count
+    assert_equal grouped.size, filtered.size
+    assert_operator Post.distinct.count(:title), :<=, Post.count
+  end
 end

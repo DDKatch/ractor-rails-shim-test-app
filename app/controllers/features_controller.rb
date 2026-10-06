@@ -130,6 +130,27 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #63/#64: aggregates (sum/average/min/max/pluck/pick/
+  # ids/exists?) and grouping (group/having/distinct) exercised in a worker
+  # Ractor.
+  def aggregate_probe
+    render json: {
+      sum_id: Post.sum(:id),
+      average_id: Post.average(:id)&.to_i,
+      min_le_max: Post.minimum(:id) <= Post.maximum(:id),
+      pluck_count: Post.limit(3).pluck(:title).size,
+      pick_present: Post.order(:id).pick(:title).present?,
+      ids_integer: Post.ids.first.is_a?(Integer),
+      exists: Post.exists?,
+      none_exists: Post.where("1 = 0").exists?,
+      group_states: Post.group(:state).count.size,
+      having_states: Post.group(:state).having("COUNT(id) > 0").count.size,
+      distinct_titles: Post.distinct.count(:title)
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }

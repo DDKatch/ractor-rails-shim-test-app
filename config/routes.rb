@@ -35,6 +35,7 @@ get "/assoc_probe", to: "stats#assoc_probe"
     get "/enum_probe", to: "features#enum_probe"
     get "/dirty_probe", to: "features#dirty_probe"
     get "/batch_probe", to: "features#batch_probe"
+    get "/aggregate_probe", to: "features#aggregate_probe"
     get "/current", to: "features#current_attrs"
     get "/rich_text", to: "features#rich_text"
   end

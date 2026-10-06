@@ -54,9 +54,13 @@ row, tick it here, note the evidence (test file / probe status).
    with `find_each(batch_size: 100)` (Titled census; `recount_comments`
    already used find_each); kino `/features/batch_probe`: find_each /
    find_in_batches / in_batches each visit every post in a worker.
-5. **[CHECK] Aggregates completion (row 63) — add `group`/`having`/`pluck`/
-   `exists?` to `posts:stats` or a test.
-6. **[CHECK] Grouping / distinct (row 64) — same probe as #4.
+5. **[DONE ✅]** Aggregates completion (row 63) — post_test asserts
+   sum/average/minimum/maximum/pluck/pick/ids/exists? (incl. empty-scope
+   false); kino `/features/aggregate_probe`: same values in a worker.
+6. **[DONE ✅]** Grouping / distinct (row 64) — post_test asserts
+   `group(:state).count`, `having("COUNT(id) > 0")`, `distinct.count(:title)`;
+   kino `/features/aggregate_probe`: identical group/having sizes + distinct
+   count in a worker.
 7. **[DONE ✅]** Counter cache in workers (row 70) — explicit assert: create a
    comment from a worker probe, `post.comments_count` incremented (the SQL
    `UPDATE posts SET comments_count...` runs on the worker's connection).

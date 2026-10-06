@@ -546,6 +546,8 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   dp_status, _dp_headers, dp_body = dispatch(app, "GET", "/features/dirty_probe", nil, nil)
   # Batch probe (row 62): worker-side find_each / find_in_batches / in_batches.
   bp_status, _bp_headers, bp_body = dispatch(app, "GET", "/features/batch_probe", nil, nil)
+  # Aggregate probe (rows 63+64): worker-side aggregates + grouping.
+  agr_status, _agr_headers, agr_body = dispatch(app, "GET", "/features/aggregate_probe", nil, nil)
   # The CSRF token is bound to the session created during the GET — replay
   # that session cookie on the multipart POST (same pattern as the sign-in
   # flow), otherwise verify_authenticity_token compares against a fresh
@@ -630,6 +632,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/enum_probe" => [ep_status, nil, ep_body],
     "GET /features/dirty_probe" => [dp_status, nil, dp_body],
     "GET /features/batch_probe" => [bp_status, nil, bp_body],
+    "GET /features/aggregate_probe" => [agr_status, nil, agr_body],
     "POST /features/form_echo (multipart)" => [fe_status, fe_headers, fe_body],
     "GET /features/current" => [ca_status, ca_headers, ca_body],
     "GET /features/basic_auth (401)" => [ba401_status, ba401_headers, ba401_body],
@@ -1102,6 +1105,27 @@ else
                    "worker-side find_in_batches must visit every post"
       assert_equal bp_json["total"], bp_json["in_batches_ids"],
                    "worker-side in_batches relation.ids must cover every post"
+
+      # --- Rows 63+64: worker-side aggregates + grouping --------------------
+      agr_key = "GET /features/aggregate_probe"
+      agr_status = results[agr_key][0]
+      agr_body = results[agr_key][2]
+      assert_equal 200, agr_status,
+                   "GET /features/aggregate_probe must return 200 (got #{agr_status}: #{agr_body[0..200]})"
+      agr_json = JSON.parse(agr_body)
+      assert_kind_of Integer, agr_json["sum_id"], "worker-side Post.sum(:id) must return an Integer"
+      assert_kind_of Integer, agr_json["average_id"], "worker-side Post.average(:id) must resolve"
+      assert_equal true, agr_json["min_le_max"], "worker-side minimum/maximum must query"
+      assert_operator agr_json["pluck_count"], :>=, 1, "worker-side pluck must return rows"
+      assert_equal true, agr_json["pick_present"], "worker-side pick must resolve a title"
+      assert_equal true, agr_json["ids_integer"], "worker-side Post.ids must return Integer ids"
+      assert_equal true, agr_json["exists"], "worker-side Post.exists? must be true"
+      assert_equal false, agr_json["none_exists"], "worker-side exists? on an empty scope must be false"
+      assert_operator agr_json["group_states"], :>=, 1, "worker-side group(:state).count must group"
+      assert_equal agr_json["group_states"], agr_json["having_states"],
+                   "worker-side having('COUNT(id) > 0') must keep non-empty groups"
+      assert_operator agr_json["distinct_titles"], :<=, 999,
+                      "worker-side distinct.count must query"
 
       # --- Row 101: multipart/form-data POST through Rack's parser ---------
       fe_key = "POST /features/form_echo (multipart)"
