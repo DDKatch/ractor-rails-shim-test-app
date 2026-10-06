@@ -4,7 +4,9 @@ Goal: verify every core Rails feature that **80%+ of production Rails apps** act
 uses, exercise it end-to-end, and record what works vs what breaks under the
 ractor-rails-shim on Ruby 4.0.6 / Rails 8.1.3.
 
-Last updated: 2026-10-06 (full Rails-guides sweep: rows 61–144 added, `TODO.md` created)
+Last updated: 2026-10-06 (batch-7 kino pass: rows 66–70, 89, 91–94, 96, 99, 101, 120, 129 worker-verified; tally below)
+
+**Tally: ✅ 94/144 · 🔲 47 · ⛔ 2 · ❌ 1** — keep this line and the Summary table in sync with every row flip.
 
 ## Feature matrix
 
@@ -170,15 +172,18 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 
 | Status | Count | Features |
 |--------|-------|----------|
-| ✅ Done | 75 | All of rows 1–60 except #50, plus 16 already-evidenced rows from the full guides sweep (CRUD, aggregates, counter caches, signed ids, dependent:, redirects, asset helpers, job test helpers, worker perform_now, multipart mail, notifications, credentials, initializers, db tasks, seeds) |
-| 🔲 To audit | 67 | Rows 62–144 marked 🔲 — see `TODO.md` for the check / implement / test plan per row |
+| ✅ Done | 94 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the batch-7 kino-verified worker rows: 66–70 (polymorphic, STI, HABTM, nested attributes, counter cache), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 99 (date/collection select), 101 (multipart upload), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔) |
+| — of which qualified ✅ | (12 of the 94) | Partially-scoped rows: 1 (main only — ❌ worker gap, see row 98), 40, 48, 63, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 75, 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
+| 🔲 To audit | 47 | See `TODO.md` for the check / implement / test plan per row |
 | ⛔ Known limitations | 2 | #50 sanitize / simple_format (Nokogiri, permanent) · #90 `around_action` (SymbolicTransport doesn't replay `:around` filters — shim project or documented exclusion) |
-| ❌ Broken | 0 | (Segfaults are env-level, not feature-level) |
+| ❌ Broken (worker) | 1 | #98 `fields_with_errors` — worker-side `valid?` silently passes (empty `:validate` chain in the shim's replay registry); invalid records can save in workers. TODO P1 #1; row 1 shares this gap |
 
-## Test Results (as of 2026-10-05)
+Tally: 94 + 47 + 2 + 1 = 144. Counts are maintained with each row flip — last updated 2026-10-06 (batch-7 kino pass).
+
+## Test Results (as of 2026-10-06)
 
 ```
-111 runs, 324 assertions, 0 failures, 0 errors, 0 skips
+154 runs, 538 assertions, 0 failures, 0 errors, 0 skips
 ```
 
 - **0 failures, 0 errors, 0 skips** — all feature-level tests pass, including the `:ractor` integration suite (no routes 555)
@@ -186,7 +191,7 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 
 ## Known Ractor Limitations (555 responses in :ractor mode)
 
-As of the last full run (`bin/rails test` → 111 runs, 324 assertions, 0 failures, 0 errors, **0 skips**), no audited route returns 555 or 500 — every audited feature serves from worker Ractors in `:ractor` mode, including the caching stack (fragment / russian-doll / low-level), the number-helper views, and ActiveJob enqueue from a worker (TODO #5 probe → 200 {enqueued: true}).
+As of the last full run (`bin/rails test` → 154 runs, 538 assertions, 0 failures, 0 errors, **0 skips**), no audited route returns 555 or 500 — every audited feature serves from worker Ractors in `:ractor` mode, including the caching stack (fragment / russian-doll / low-level), the number-helper views, and ActiveJob enqueue from a worker (TODO #5 probe → 200 {enqueued: true}).
 
 The one residual worker-Ractor limitation is **HTML sanitization**: the `sanitize` / `simple_format` helpers are backed by Nokogiri, whose document parser is a **ractor-unsafe C method** (Ruby only permits it in the main Ractor). This is unfixable in the shim — full write-up in the shim's `COMPATIBILITY.md` (`actionview — sanitize / simple_format`). This app sidesteps it: user content is rendered escaped via ERB (XSS-safe) with `whitespace-pre-wrap`, so no Nokogiri call runs in workers.
 
@@ -196,7 +201,7 @@ Caveat on the caching claims: the `:ractor` kino runs `perform_caching = true` w
 - `GET /posts/new` (unauth) → 302 redirect (Devise before_action replay)
 - `POST /posts` (bad CSRF) → 422 (CSRF validation in worker)
 - `DELETE /users/sign_out` → 422 (CSRF validation)
-- All in-process test suite tests (111/111 pass)
+- All in-process test suite tests (154/154 pass)
 
 ## Shim fixes required by the newly-audited features (2026-10-05)
 
