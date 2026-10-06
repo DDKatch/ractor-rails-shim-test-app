@@ -137,14 +137,14 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | 114 |                      | Multipart emails (HTML + plain text) | ✅ Done | `report_email` renders both parts |
 | 115 |                      | Delivery methods (SMTP settings)    | 🔲 To audit | test delivery ✅ via `:test` adapter; SMTP config unverified |
 | 116 |                      | Mailer callbacks (`before`/`after_action`) | 🔲 To audit | |
-| 117 | **Action Mailbox**   | Routing + relay ingress             | 🔲 To audit | whole component unexercised |
-| 118 |                      | `InboundEmail` processing (mail parsing, `bounce`, deliver-to-mailbox) | 🔲 To audit | `mail` gem is pure Ruby — good chance it works; verify Nokogiri is off the parse path |
-| 119 |                      | ActionMailbox test helpers          | 🔲 To audit | |
-| 120 | **Action Text**      | `has_rich_text` + rich text rendering | 🔲 To audit ⚠️ | **Suspected ⛔**: rendering runs the HTML sanitizer → Nokogiri → likely the same worker-Ractor wall as #50. Verify, then either document as known limitation or rework |
-| 121 |                      | Rich text embeds / direct uploads   | 🔲 To audit | |
-| 122 | **Action Cable**     | Connection identifiers / rejected connections | 🔲 To audit | |
-| 123 |                      | Broadcasts from model callbacks & workers | 🔲 To audit | `:async` adapter is per-process — cross-worker semantics need redis / solid_cable + a decision on kino topology |
-| 124 |                      | Cable adapters (redis / solid_cable) | 🔲 To audit | `config/cable.yml` points at Redis but no redis gem is bundled — fix config or document |
+| 117 | **Action Mailbox**   | Routing + relay ingress             | ✅ Done | `ApplicationMailbox` routes `:all => :inbox`; `InboxMailbox` records a polymorphic `AuditLog`; migration 20261006000008 |
+| 118 |                      | `InboundEmail` processing (mail parsing, `bounce`, deliver-to-mailbox) | ✅ Done | `test/mailboxes/inbox_mailbox_test.rb` — `receive_inbound_email_from_mail` routes and processes; `mail` gem (pure Ruby) is off the wall |
+| 119 |                      | ActionMailbox test helpers          | ✅ Done | `receive_inbound_email_from_mail` in the mailbox spec (note: `create_inbound_email_from_mail` does NOT route — use the receive_ variant) |
+| 120 | **Action Text**      | `has_rich_text` + rich text rendering | ✅ Done (main Ractor) | `has_rich_text :content` on Post (migration 20261006000007); `test/controllers/rich_text_test.rb` verifies write + sanitize + render in the MAIN ractor. Worker-side rendering runs the sanitizer → Nokogiri → same wall as #50; kino worker probe pending (expect ⛔ in workers — render rich text only in main, like #50's pattern) |
+| 121 |                      | Rich text embeds / direct uploads   | 🔲 To audit | embeds (`rich_text_area` + attachables) unexercised |
+| 122 | **Action Cable**     | Connection identifiers / rejected connections | 🔲 To audit | connection/class-level semantics live in the main-Ractor cable server (out of :ractor scope) |
+| 123 |                      | Broadcasts from model callbacks & workers | ✅ Done | kino `GET /cable_probe`: `ActionCable.server.broadcast` inside a worker Ractor persists a `solid_cable_messages` row (shim: per-Ractor cable server + SolidCable configuration). Publish = DB INSERT; client delivery is the main-Ractor poller's concern |
+| 124 |                      | Cable adapters (redis / solid_cable) | ✅ Done | `solid_cable` adopted (Rails 8 default stack, no Redis dependency), all envs, primary DB — no `connects_to` (see config/cable.yml for the pool-resolution rationale) |
 | 125 | **Active Storage**   | Multiple services / public service  | 🔲 To audit | |
 | 126 |                      | Analyzers / `analyze_later`         | 🔲 To audit | |
 | 127 |                      | Blob download / proxy streaming     | 🔲 To audit | |

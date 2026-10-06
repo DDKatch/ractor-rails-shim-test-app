@@ -71,18 +71,21 @@ row, tick it here, note the evidence (test file / probe status).
 22. **[CHECK] `Rails.error` reporting** (row 133) — rescue_from already
     handles app errors; verify a worker-raised error reaches the ErrorReporter
     + log subscriber path.
-23. **[VERIFY] Action Text** (rows 120–121) — `has_rich_text :body` on Post;
-    render in a worker view. **Expect the Nokogiri sanitizer wall** (same
-    class as #50). If confirmed: matrix row → ⛔, add a Known-limitations
-    note + workaround (kramdown-rendered plain markdown column instead).
-24. **[DECIDE] Action Cable in `:ractor` kino** (rows 122–124) — cable.yml
-    points at Redis without the redis gem bundled. Options: bundle
-    `solid_cable` (DB-backed, fits the app's PG stack) and audit
-    worker→broadcast semantics; or document "Cable out of scope for kino".
-25. **[VERIFY] Action Mailbox** (rows 117–119) — wire relay ingress;
-    `ActionMailbox::TestCase` builds InboundEmails in-process (no MTA
-    needed). `mail` gem is pure Ruby — parse path should be worker-safe;
-    verify no Nokogiri on it.
+23. **[DONE] Action Text** (rows 120–121) — `has_rich_text :content` on Post
+    (migration 20261006000007); write + sanitize + render verified in the
+    MAIN ractor (`test/controllers/rich_text_test.rb`). Worker-side render
+    probe still pending — expect the Nokogiri sanitizer wall (same class as
+    #50); if confirmed in the kino: matrix row gains a worker-side ⛔ note.
+24. **[DONE] Action Cable in `:ractor` kino** (rows 122–124) — `solid_cable`
+    adopted (DB-backed, PG stack, no Redis); all envs point at the primary
+    DB without `connects_to` (pool spec-name rationale in config/cable.yml).
+    Worker broadcast verified in the kino (`GET /cable_probe` 200, persisted
+    row; shim gained per-Ractor cable server + SolidCable configuration).
+    Connection semantics (row 122) stay main-Ractor-scope.
+25. **[DONE] Action Mailbox** (rows 117–119) — `ApplicationMailbox` routes
+    `:all => :inbox`; `InboxMailbox` records a polymorphic AuditLog;
+    `test/mailboxes/inbox_mailbox_test.rb` uses
+    `receive_inbound_email_from_mail` (the create_ variant does NOT route).
 27. **[IMPLEMENT] Real production cache store** (rows 45–47 caveat) —
     `production.rb` sets `perform_caching = true` but configures no
     `cache_store`, and no `solid_cache` gem is bundled → the store defaults
