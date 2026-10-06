@@ -7,7 +7,7 @@ source "https://rubygems.org"
 # Cut a release and revert to `gem "ractor-rails-shim", "~> 0.4"` before
 # publishing the test-app repo.
 gem "ractor-rails-shim", github: "DDKatch/ractor-rails-shim", branch: "main"
-gem "rails", "~> 8.1.3"
+gem "rails", "~> 8.1.4"
 gem "propshaft"
 gem "tailwindcss-rails"
 gem "pg", "~> 1.4"
