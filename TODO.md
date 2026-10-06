@@ -46,8 +46,10 @@ row, tick it here, note the evidence (test file / probe status).
    `_share_ar_pending_attribute_modifications!` (undecoratable enum
    decoration Proc → `RactorRailsShim::EnumTypeDecorator`, run BEFORE the
    model-snapshot capture that seeds `SHAREABLE_PENDING_ATTR_MODS`).
-3. **[CHECK] AR dirty tracking (row 73) — assert `changed?` / `saved_changes`
-   in `comment_test`. Instance-level state, should be trivially fine.
+3. **[DONE ✅]** AR dirty tracking (row 73) — comment_test asserts the full
+   lifecycle (`changed?` on new + mutated records, `changes` [old, new]
+   pair, post-save `saved_changes`); kino `/features/dirty_probe`: identical
+   values in a worker (mutation → save). No shim changes needed.
 4. **[CHECK] AR batch processing (row 62) — switch `posts:stats` to
    `find_each`; run in a worker (rake in kino context or a probe route).
 5. **[CHECK] Aggregates completion (row 63) — add `group`/`having`/`pluck`/

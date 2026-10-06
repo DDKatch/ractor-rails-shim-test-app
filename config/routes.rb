@@ -33,6 +33,7 @@ get "/assoc_probe", to: "stats#assoc_probe"
     post "/form_echo", to: "features#form_echo"
     get "/validations_probe", to: "features#validations_probe"
     get "/enum_probe", to: "features#enum_probe"
+    get "/dirty_probe", to: "features#dirty_probe"
     get "/current", to: "features#current_attrs"
     get "/rich_text", to: "features#rich_text"
   end

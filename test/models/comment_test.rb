@@ -42,4 +42,24 @@ class CommentTest < ActiveSupport::TestCase
     results = Comment.by_user(user)
     assert results.all? { |c| c.user == user }
   end
+
+  test "dirty tracking on new, changed and saved records" do
+    # New record: user-provided attributes are dirty
+    comment = Comment.new(body: "Nice post!", user: users(:one), post: posts(:one))
+    assert comment.changed?
+    assert_includes comment.changed, "body"
+
+    # Mutating a persisted record: changes visible until save
+    comment = comments(:one)
+    original_body = comment.body
+    assert_not comment.changed?
+    comment.body = "Edited body"
+    assert comment.changed?
+    assert_equal [original_body, "Edited body"], comment.changes["body"]
+
+    # After save: changes move to saved_changes
+    comment.save!
+    assert_not comment.changed?
+    assert_equal [original_body, "Edited body"], comment.saved_changes["body"]
+  end
 end

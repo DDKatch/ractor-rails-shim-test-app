@@ -99,6 +99,25 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #73: dirty tracking — instance-level state (changed?,
+  # changes, saved_changes, attribute_was) exercised in a worker Ractor.
+  def dirty_probe
+    record = Post.order(:id).last
+    record.title = "Dirty Probe #{Time.current.to_i}"
+    rendered = {
+      changed_after_mutate: record.changed?,
+      changes_title: record.changes["title"].is_a?(Array) && record.changes["title"].size == 2,
+      title_was: record.title_was.present?,
+      changed_list_includes_title: record.changed.include?("title")
+    }
+    record.save!
+    rendered[:changed_after_save] = record.changed?
+    rendered[:saved_changes_title] = record.saved_changes["title"].is_a?(Array) && record.saved_changes["title"].size == 2
+    render json: rendered
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }

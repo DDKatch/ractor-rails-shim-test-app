@@ -541,6 +541,9 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # Enum probe (row 65): worker-side enum bangs/predicates/scopes/values
   # reader + the replayed EnumType attribute registration.
   ep_status, _ep_headers, ep_body = dispatch(app, "GET", "/features/enum_probe", nil, nil)
+  # Dirty probe (row 73): worker-side changed?/changes/saved_changes on a
+  # mutated + saved record.
+  dp_status, _dp_headers, dp_body = dispatch(app, "GET", "/features/dirty_probe", nil, nil)
   # The CSRF token is bound to the session created during the GET — replay
   # that session cookie on the multipart POST (same pattern as the sign-in
   # flow), otherwise verify_authenticity_token compares against a fresh
@@ -623,6 +626,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/form_probe" => [fp_status, fp_headers, fp_body],
     "GET /features/validations_probe" => [vp_status, nil, vp_body],
     "GET /features/enum_probe" => [ep_status, nil, ep_body],
+    "GET /features/dirty_probe" => [dp_status, nil, dp_body],
     "POST /features/form_echo (multipart)" => [fe_status, fe_headers, fe_body],
     "GET /features/current" => [ca_status, ca_headers, ca_body],
     "GET /features/basic_auth (401)" => [ba401_status, ba401_headers, ba401_body],
@@ -1061,6 +1065,26 @@ else
                      "worker-side `Post.not_draft` negative scope must query"
       assert_equal true, ep_json["invalid_raises"],
                    "worker-side invalid enum assignment must raise ArgumentError like main"
+
+      # --- Row 73: worker-side dirty tracking -------------------------------
+      dp_key = "GET /features/dirty_probe"
+      dp_status = results[dp_key][0]
+      dp_body = results[dp_key][2]
+      assert_equal 200, dp_status,
+                   "GET /features/dirty_probe must return 200 (got #{dp_status}: #{dp_body[0..200]})"
+      dp_json = JSON.parse(dp_body)
+      assert_equal true, dp_json["changed_after_mutate"],
+                   "worker-side `changed?` after mutation must be true"
+      assert_equal true, dp_json["changes_title"],
+                   "worker-side `changes['title']` must be an [old, new] pair"
+      assert_equal true, dp_json["title_was"],
+                   "worker-side `title_was` must return the original value"
+      assert_equal true, dp_json["changed_list_includes_title"],
+                   "worker-side `changed` must list the mutated attribute"
+      assert_equal false, dp_json["changed_after_save"],
+                   "worker-side `changed?` must be false after save"
+      assert_equal true, dp_json["saved_changes_title"],
+                   "worker-side `saved_changes['title']` must hold the [old, new] pair"
 
       # --- Row 101: multipart/form-data POST through Rack's parser ---------
       fe_key = "POST /features/form_echo (multipart)"
