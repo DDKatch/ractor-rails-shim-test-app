@@ -13,7 +13,7 @@ gem "audit_engine", path: "engines/audit_engine"
 gem "rails", "~> 8.1.3"
 gem "propshaft"
 gem "tailwindcss-rails"
-gem "pg", "~> 1.4"
+gem "pg", "~> 1.7"
 gem "puma", ">= 5.0"
 gem "falcon"
 # Pin kino: the README requires the official kino 0.2.x gem; an unbounded
