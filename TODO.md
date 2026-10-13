@@ -202,17 +202,31 @@ row, tick it here, note the evidence (test file / probe status).
     not exercised — single-PK kino (documented in the row note).
 11. **[CHECK] Composite PKs / multiple DBs (rows 80–81) — low; document
     "single-DB kino" if skipped.
-12. **[CHECK] Custom form builders / `fields_for` (row 97) — comment
-    sub-form on posts.
-13. **[CHECK] `fields_with_errors` (row 98) — submit invalid post form;
-    assert wrapper div.
-14. **[CHECK] Text helpers (row 100) — `truncate` + `pluralize` in the
-    index view (NOT `highlight`/`excerpt` — they use `sanitize`-adjacent
-    Nokogiri paths? verify before adding).
-15. **[CHECK] `head` / custom statuses (row 89) — probe route returning
-    `head :no_content`.
-16. **[CHECK] HTTP auth (row 92) — `http_basic_authenticate_with` on a
-    probe controller; worker probe.
+12. **[DONE ✅]** Custom form builders / `fields_for` (row 97) — kino
+    `/features/builder_form_probe` in a worker: `form_with builder:
+    LabeledFormBuilder` renders the custom labeled-field wrapper, and a
+    `fields_for` block on the comments association emits nested-attribute
+    names (`post[comments_attributes][0][body]`). Main-mode coverage in
+    `features_controller_test`.
+13. **[DONE ✅]** `fields_with_errors` (row 98) — already covered:
+    `/features/form_probe` submits a record with a deliberate :body
+    error and asserts the wrapper div; kino asserts the wrapper renders
+    in a worker (row-98 flip, earlier batch).
+14. **[DONE ✅]** Text helpers (row 100) — kino `/features/text_helpers_probe`
+    in a worker: truncate/pluralize/excerpt + highlight (plain-gsub
+    path). Two Ractor notes recorded in the row: TextHelper must be
+    included at boot (worker-side `include` → `Ractor::UnsafeError`),
+    and `highlight` runs sanitize (Nokogiri — row 120 ⛔) by default, so
+    the worker probe passes `sanitize: false`; default-sanitize
+    highlight stays main-mode (`text_helpers_audit_test` — its stale
+    "no Nokogiri involvement" comment was corrected).
+15. **[DONE ✅]** `head` / custom statuses (row 89) — already covered:
+    `/features/head` returns `head :no_content` (204, empty body);
+    asserted main (`features_controller_test`) and in a worker (kino).
+16. **[DONE ✅]** HTTP auth (row 92) — already covered:
+    `http_basic_authenticate_with` on FeaturesController#basic_auth;
+    worker kino dispatch sends the Authorization header (basic scope;
+    digest/token documented as pending in the row note).
 17. **[CHECK] Mailer delivery methods (row 115) — configure SMTP settings
     shape (delivery won't actually send; assert Mail message build).
 18. **[DONE ✅]** Mailer callbacks (row 116) — `after_action` in UserMailer
