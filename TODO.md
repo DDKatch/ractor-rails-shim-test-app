@@ -185,8 +185,14 @@ row, tick it here, note the evidence (test file / probe status).
     true after `to_a`. Main-mode coverage in `association_toolkit_test`
     (commits for real: the async executor's separate connection cannot
     see transactional-test rows).
-9. **[IMPLEMENT] Advanced migrations (row 83) — one migration exercising
-    `reversible` + FK + check constraint; `db:rollback` then re-migrate.
+9. **[DONE ✅]** Advanced migrations (row 83) — `CreateAuditArchives`
+    migration: `create_table` + `add_foreign_key` + named
+    `add_check_constraint` + an explicit `reversible` block (table COMMENT
+    with direction-specific SQL). `db:rollback STEP=1` reverts clean and
+    re-migrates. `audit_archive_test` (main): FK rejects a missing post
+    (`InvalidForeignKey`), check constraint bites with `validate: false`,
+    jsonb containment. kino `/features/audit_archive_probe` in a worker:
+    same FK/jsonb/check exercise.
 10. **[CHECK] Postgres types (row 82) — jsonb column + array column on
     AuditLog; worker-side jsonb query.
 11. **[CHECK] Composite PKs / multiple DBs (rows 80–81) — low; document
