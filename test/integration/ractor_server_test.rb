@@ -542,6 +542,10 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # a worker Ractor.
   thp_status, thp_headers, thp_body = dispatch(app, "GET", "/features/text_helpers_probe", nil, nil)
 
+  # Composite-PK probe (row 80): tuple find / update / duplicate-PK
+  # violation on the [region, year] table, from a worker Ractor.
+  cpp_status, cpp_headers, cpp_body = dispatch(app, "GET", "/features/composite_pk_probe", nil, nil)
+
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
   # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
   # patched) — must return 200 {enqueued: true}.
@@ -682,6 +686,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/audit_archive_probe" => [aap_status, aap_headers, aap_body],
     "GET /features/builder_form_probe" => [bbp_status, bbp_headers, bbp_body],
     "GET /features/text_helpers_probe" => [thp_status, thp_headers, thp_body],
+    "GET /features/composite_pk_probe" => [cpp_status, cpp_headers, cpp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
@@ -1149,6 +1154,20 @@ else
       assert thp_parsed["pluralize_ok"], "pluralize must work in a worker (row 100)"
       assert thp_parsed["highlight_ok"], "highlight must work in a worker (row 100)"
       assert thp_parsed["excerpt_ok"], "excerpt must work in a worker (row 100)"
+
+      # --- Row 80: composite primary keys in a worker ---
+      # GET /composite_pk_probe: tuple find, update by PK, and the
+      # duplicate-PK violation on the [region, year] table.
+      cpp_key = "GET /features/composite_pk_probe"
+      cpp_status = results[cpp_key][0]
+      cpp_body = results[cpp_key][2]
+      assert_equal 200, cpp_status,
+                   "GET /composite_pk_probe must return 200 in a worker Ractor (got #{cpp_status}: #{cpp_body[0..200]})"
+      cpp_parsed = JSON.parse(cpp_body)
+      assert cpp_parsed["created"], "the composite-PK row must be creatable in a worker (row 80)"
+      assert cpp_parsed["find_by_pk_ok"], "tuple find ([region, year]) must work in a worker (row 80)"
+      assert cpp_parsed["update_ok"], "update routed through the composite PK must work in a worker (row 80)"
+      assert cpp_parsed["dup_violation"], "a duplicate composite PK must raise RecordNotUnique in a worker (row 80)"
       assert aap_parsed["log_jsonb_ok"],
                    "AuditLog jsonb containment must work in a worker (row 82)"
       assert aap_parsed["log_array_ok"],

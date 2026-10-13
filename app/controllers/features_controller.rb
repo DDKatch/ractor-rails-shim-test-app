@@ -458,6 +458,37 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #80: composite primary keys from a worker Ractor.
+  # region_stats has PK (region, year) — no synthetic id. Exercise
+  # tuple find, update by PK, and the duplicate-PK violation; cleaned
+  # up after.
+  def composite_pk_probe
+    stat = RegionStat.create!(region: "EU", year: 2026, visits: 10)
+    created = stat.persisted?
+    found = RegionStat.find([ "EU", 2026 ])
+    find_by_pk_ok = found.visits == 10
+    found.update!(visits: 42)
+    update_ok = found.reload.visits == 42
+
+    dup_violation = false
+    begin
+      RegionStat.create!(region: "EU", year: 2026, visits: 99)
+    rescue ActiveRecord::RecordNotUnique => e
+      dup_violation = e.message.include?("region_stats_pkey")
+    end
+
+    stat.destroy!
+
+    render json: {
+      created: created,
+      find_by_pk_ok: find_by_pk_ok,
+      update_ok: update_ok,
+      dup_violation: dup_violation
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #97: custom form builder + fields_for. Renders a
   # form via LabeledFormBuilder (custom labeled-field markup) with a
   # fields_for block on the Post comments association (nested-attribute
