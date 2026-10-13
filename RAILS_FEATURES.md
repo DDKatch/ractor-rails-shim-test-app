@@ -4,9 +4,9 @@ Goal: verify every core Rails feature that **80%+ of production Rails apps** act
 uses, exercise it end-to-end, and record what works vs what breaks under the
 ractor-rails-shim on Ruby 4.0.6 / Rails 8.1.3.
 
-Last updated: 2026-10-13 (rows 107/108 + 113/116 worker-verified — job resilience, enqueue options, mail hooks, mailer callbacks; rows 45–47 re-verified against the real Solid Cache store in workers, TODO #27; tally below)
+Last updated: 2026-10-13 (rows 107/108 + 113/116 worker-verified — job resilience, enqueue options, mail hooks, mailer callbacks; rows 45–47 re-verified against the real Solid Cache store in workers, TODO #27; row 71 optimistic locking worker-verified; tally below)
 
-**Tally: ✅ 106/144 · 🔲 36 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
+**Tally: ✅ 107/144 · 🔲 35 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
 
 ## Feature matrix
 
@@ -56,7 +56,7 @@ Last updated: 2026-10-13 (rows 107/108 + 113/116 worker-verified — job resilie
 | 42 | **I18n**              | Translations (t / l / localize)     | ✅ Done | config/locales/en.yml with full translations |
 | 43 |                       | Pluralization                       | ✅ Done | en.messages.count defined |
 | 44 |                       | Locale switching                    | ✅ Done | Locale available in I18n config |
-| 45  | **Caching**           | Fragment caching                    | ✅ Done | `posts/index` (outer key: page + `Post.maximum(:updated_at)`) + `posts/show` body; test env uses `:memory_store` + `perform_caching = true`; the kino now runs the real `:solid_cache_store` (TODO #27) |
+| 45  | **Caching**           | Fragment caching                    | ✅ Done | `posts/index` (outer key: search term + page + `Post.maximum(:updated_at)`) + `posts/show` body; test env uses `:memory_store` + `perform_caching = true`; the kino now runs the real `:solid_cache_store` (TODO #27) |
 | 46  |                       | Russian doll caching                | ✅ Done | Inner `cache post` / `cache comment` fragments nested in the outer ones; comment fragments survive a post bust while busted outer fragments re-render (asserted via cache instrumentation events) |
 | 47  |                       | Low-level caching (Rails.cache)     | ✅ Done | `Rails.cache.fetch("posts/index/total_count", expires_in: 1.minute)` in `PostsController#index` — works in worker Ractors too (see shim fixes below); kino `/solid_cache_probe`: worker-side miss+hit persists and reads back a `solid_cache_entries` row (TODO #27) |
 | 48  |                       | Sweepers / cache invalidation       | ✅ Done (replacement) | Rails 8 removed `ActionController::Sweeper`; invalidation is touch-based — `Comment belongs_to :post, touch: true` bumps `post.updated_at`, part of the post cache_key and the index fragment key (asserted) |
@@ -93,7 +93,7 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | 68 |                       | `has_and_belongs_to_many` / `has_one :through` | ✅ Done (HABTM) | kino `/assoc_probe` in a worker: `post.tags << tag` inserts through the collection (join-row link proven by ids). `has_one :through` not yet exercised |
 | 69 |                       | Nested attributes (`accepts_nested_attributes_for`) | ✅ Done | kino `/assoc_probe` in a worker: `Post.create!(comments_attributes: [...])` INSERTs the nested comment (shim: Rails' `define_non_cyclic_method` Procs → real `def` redefinitions; has_one assoc-scope where-values baked for workers) |
 | 70 |                       | Counter caches                      | ✅ Done | `Comment belongs_to :post, counter_cache: true`; `posts:recount_comments` repairs. kino `/assoc_probe` now asserts `comments_count == 1` after the nested-attributes create IN A WORKER |
-| 71 |                       | Optimistic locking (`lock_version`) | 🔲 To audit | |
+| 71 |                       | Optimistic locking (`lock_version`) | ✅ Done | Migration adds `lock_version` (default 0) to Post — Rails enables locking automatically. `active_record_toolkit_test` (main) + kino `/features/optimistic_lock_probe` in a worker: two copies of a dedicated probe row, the winning save bumps `lock_version` 0→1, the stale save raises `ActiveRecord::StaleObjectError` and leaves the row untouched; stale-destroy also raises (row cleaned up via a fresh copy) |
 | 72 |                       | Pessimistic locking (`with_lock`)   | 🔲 To audit | |
 | 73 |                       | Dirty tracking (`changed?`, `changes`, `saved_changes`) | ✅ Done | comment_test (new/changed/saved lifecycle: `changed?`, `changes` pair, `title_was`, post-save `saved_changes`) + kino `/features/dirty_probe` in a worker: identical values through mutation → save (instance-level state, no shim changes needed) |
 | 74 |                       | `normalizes` (Rails 7.1)            | 🔲 To audit | |
@@ -172,18 +172,18 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 
 | Status | Count | Features |
 |--------|-------|----------|
-| ✅ Done | 106 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 62 (batch processing in workers), 63+64 (aggregates + group/having/distinct in workers), 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–70 (polymorphic, STI, HABTM, nested attributes, counter cache), 73 (dirty tracking in workers), 75 (signed_id round-trip in workers; shim 0.4.2 codec pre-warm), 76 (insert_all/upsert_all in workers), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 107+108 (ActiveJob retry/discard declarations readable from workers + set(queue:, wait:) enqueue from workers via per-Ractor Concurrent executors), 113+116 (boot-registered interceptor + mailer after_action both run during worker-side delivery via the shim's hook-registry snapshot), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
-| — of which qualified ✅ | (10 of the 106) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
-| 🔲 To audit | 36 | See `TODO.md` for the check / implement / test plan per row |
+| ✅ Done | 107 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 62 (batch processing in workers), 63+64 (aggregates + group/having/distinct in workers), 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–71 (polymorphic, STI, HABTM, nested attributes, counter cache, optimistic locking), 73 (dirty tracking in workers), 75 (signed_id round-trip in workers; shim 0.4.2 codec pre-warm), 76 (insert_all/upsert_all in workers), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 107+108 (ActiveJob retry/discard declarations readable from workers + set(queue:, wait:) enqueue from workers via per-Ractor Concurrent executors), 113+116 (boot-registered interceptor + mailer after_action both run during worker-side delivery via the shim's hook-registry snapshot), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
+| — of which qualified ✅ | (10 of the 107) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
+| 🔲 To audit | 35 | See `TODO.md` for the check / implement / test plan per row |
 | ⛔ Known limitations | 2 | #50 sanitize / simple_format (Nokogiri, permanent) · #90 `around_action` (SymbolicTransport doesn't replay `:around` filters — shim project or documented exclusion) |
 | ❌ Broken (worker) | 0 | none — the last ❌ (#98 `fields_with_errors`) was fixed by the validate-chain pass: worker-side `valid?` replays captured validator descriptors, invalid records no longer save in workers |
 
-Tally: 106 + 36 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-13 (job resilience 107 + enqueue options 108, mail hooks 113 + mailer callbacks 116, Solid Cache store in workers #27).
+Tally: 107 + 35 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-13 (job resilience 107 + enqueue options 108, mail hooks 113 + mailer callbacks 116, Solid Cache store in workers #27, optimistic locking 71).
 
 ## Test Results (as of 2026-10-13)
 
 ```
-157 runs, 632 assertions, 0 failures, 0 errors, 0 skips
+158 runs, 643 assertions, 0 failures, 0 errors, 0 skips
 ```
 
 - **0 failures, 0 errors, 0 skips** — all feature-level tests pass, including the `:ractor` integration suite (no routes 555)

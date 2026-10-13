@@ -149,8 +149,13 @@ row, tick it here, note the evidence (test file / probe status).
 
 ## P2 — toolkit depth
 
-1. **[CHECK] Optimistic locking (row 71) — `lock_version` on Post;
-    concurrent-update `ActiveRecord::StaleObjectError` test.
+1. **[DONE ✅]** Optimistic locking (row 71) — migration adds `lock_version`
+    (default 0) to Post; Rails enables locking automatically. Verified in
+    main (`active_record_toolkit_test`: stale update raises
+    `ActiveRecord::StaleObjectError`, winner bumps the version) and in a
+    worker via kino `/features/optimistic_lock_probe` (dedicated probe row,
+    winning save 0→1, stale save raises and leaves the row untouched;
+    destroy of the stale copy raises too — cleaned up via a fresh copy).
 2. **[CHECK] Pessimistic locking (row 72) — `Post.with_lock` in a job.
 3. **[CHECK] `normalizes` (row 74) — `normalizes :email, with: ->(v) { v.strip.downcase }`
     on User (norm Procs must be shareable — same class as scope lambdas).
