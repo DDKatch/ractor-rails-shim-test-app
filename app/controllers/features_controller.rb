@@ -280,6 +280,32 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #72: pessimistic locking (with_lock). From a worker
+  # Ractor: create a dedicated probe row, run a with_lock transaction (SELECT
+  # ... FOR UPDATE + update inside the held lock), verify the update
+  # persisted, and confirm the generated SQL really carries FOR UPDATE. The
+  # row is destroyed afterwards so the probe never disturbs other kino
+  # probes.
+  def pessimistic_lock_probe
+    probe = Post.create!(title: "Pessimistic Probe #{Time.current.to_i}",
+                         body: "pessimistic locking probe body")
+
+    probe.with_lock do
+      probe.update!(title: "Pessimistic Winner #{Time.current.to_i}")
+    end
+
+    fresh = Post.find(probe.id)
+    fresh.destroy!
+    render json: {
+      with_lock_completed: true,
+      winner_title_present: fresh.title.to_s.start_with?("Pessimistic Winner"),
+      lock_sql_includes_for_update: Post.order(:id).lock.to_sql.upcase.include?("FOR UPDATE"),
+      winner_lock_version: fresh.lock_version
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }

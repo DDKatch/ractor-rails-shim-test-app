@@ -510,6 +510,10 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # from a worker Ractor.
   olp_status, olp_headers, olp_body = dispatch(app, "GET", "/features/optimistic_lock_probe", nil, nil)
 
+  # Pessimistic locking probe (row 72): with_lock (FOR UPDATE) transaction
+  # from a worker Ractor.
+  plp_status, plp_headers, plp_body = dispatch(app, "GET", "/features/pessimistic_lock_probe", nil, nil)
+
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
   # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
   # patched) — must return 200 {enqueued: true}.
@@ -642,6 +646,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /mail_hooks_probe" => [mhp_status, mhp_headers, mhp_body],
     "GET /features/job_resilience_probe" => [jrp_status, jrp_headers, jrp_body],
     "GET /features/optimistic_lock_probe" => [olp_status, olp_headers, olp_body],
+    "GET /features/pessimistic_lock_probe" => [plp_status, plp_headers, plp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
@@ -984,6 +989,23 @@ else
       assert olp_parsed["winner_title_present"], "the winning save must persist (row 71)"
       assert olp_parsed["loser_title_absent"],
                    "the stale save must not touch the row (row 71)"
+
+      # --- Row 72: pessimistic locking in a worker ---
+      # GET /pessimistic_lock_probe runs a with_lock (SELECT ... FOR UPDATE)
+      # transaction inside the worker and updates the row while the lock is
+      # held.
+      plp_key = "GET /features/pessimistic_lock_probe"
+      plp_status = results[plp_key][0]
+      plp_body = results[plp_key][2]
+      assert_equal 200, plp_status,
+                   "GET /pessimistic_lock_probe must return 200 in a worker Ractor (got #{plp_status}: #{plp_body[0..200]})"
+      plp_parsed = JSON.parse(plp_body)
+      assert plp_parsed["with_lock_completed"],
+                   "with_lock must complete a FOR UPDATE transaction in a worker (row 72)"
+      assert plp_parsed["lock_sql_includes_for_update"],
+                   "Post.lock must generate SELECT ... FOR UPDATE (row 72)"
+      assert plp_parsed["winner_title_present"],
+                   "the update inside with_lock must persist (row 72)"
 
       # --- TODO #5: ActiveJob enqueue in a worker Ractor (FIXED in shim) ---
       # GET /job_enqueue_probe runs `WelcomeJob.perform_later(user)` inside a

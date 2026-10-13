@@ -42,6 +42,7 @@ get "/assoc_probe", to: "stats#assoc_probe"
     get "/bulk_probe", to: "features#bulk_probe"
     get "/job_resilience_probe", to: "features#job_resilience_probe"
     get "/optimistic_lock_probe", to: "features#optimistic_lock_probe"
+    get "/pessimistic_lock_probe", to: "features#pessimistic_lock_probe"
     get "/current", to: "features#current_attrs"
     get "/rich_text", to: "features#rich_text"
   end

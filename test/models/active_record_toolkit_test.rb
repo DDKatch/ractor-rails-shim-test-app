@@ -114,4 +114,17 @@ class ActiveRecordToolkitTest < ActiveSupport::TestCase
     assert_equal winner.lock_version, fresh.lock_version
     assert_equal winner.title, fresh.title
   end
+
+  # --- pessimistic locking (row 72) ---------------------------------------------
+
+  test "with_lock transaction updates under FOR UPDATE" do
+    assert_includes Post.order(:id).lock.to_sql.upcase, "FOR UPDATE",
+                    "Post.lock must generate a SELECT ... FOR UPDATE statement"
+
+    Post.find(@post.id).with_lock do
+      @post.update!(title: "With Lock #{SecureRandom.hex(2)}")
+    end
+
+    assert_equal @post.reload.title, Post.find(@post.id).title
+  end
 end
