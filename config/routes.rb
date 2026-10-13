@@ -44,6 +44,7 @@ get "/assoc_probe", to: "stats#assoc_probe"
     get "/optimistic_lock_probe", to: "features#optimistic_lock_probe"
     get "/pessimistic_lock_probe", to: "features#pessimistic_lock_probe"
     get "/normalizes_probe", to: "features#normalizes_probe"
+    get "/default_scope_probe", to: "features#default_scope_probe"
     get "/current", to: "features#current_attrs"
     get "/rich_text", to: "features#rich_text"
   end

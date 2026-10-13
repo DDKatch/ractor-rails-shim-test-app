@@ -331,6 +331,32 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #78: default_scope / unscoped. Category has an
+  # ORDER-based default_scope (order(:name)). From a worker Ractor: two
+  # dedicated probe rows created zulu-first, so name order (default scope)
+  # and id order (unscoped) disagree — proving the scope is applied by
+  # `all`-style reads and removed by `unscoped`. Rows destroyed after.
+  def default_scope_probe
+    stamp = SecureRandom.hex(2)
+    zulu = Category.create!(name: "Probe Zulu #{stamp}")
+    alpha = Category.create!(name: "Probe Alpha #{stamp}")
+
+    pattern = "%Probe%"
+    scoped_names = Category.where("name LIKE ?", pattern).map(&:name)
+    unscoped_names = Category.unscoped.where("name LIKE ?", pattern).map(&:name)
+
+    alpha.destroy!
+    zulu.destroy!
+
+    render json: {
+      scoped_alpha_first: scoped_names.index(alpha.name) < scoped_names.index(zulu.name),
+      unscoped_zulu_first: unscoped_names.index(zulu.name) < unscoped_names.index(alpha.name),
+      orders_differ: scoped_names != unscoped_names
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }

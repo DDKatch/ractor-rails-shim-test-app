@@ -518,6 +518,10 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # from a worker Ractor.
   nzp_status, nzp_headers, nzp_body = dispatch(app, "GET", "/features/normalizes_probe", nil, nil)
 
+  # Default-scope probe (row 78): default_scope applied/removed (unscoped)
+  # from a worker Ractor.
+  dsp_status, dsp_headers, dsp_body = dispatch(app, "GET", "/features/default_scope_probe", nil, nil)
+
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
   # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
   # patched) — must return 200 {enqueued: true}.
@@ -652,6 +656,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/optimistic_lock_probe" => [olp_status, olp_headers, olp_body],
     "GET /features/pessimistic_lock_probe" => [plp_status, plp_headers, plp_body],
     "GET /features/normalizes_probe" => [nzp_status, nzp_headers, nzp_body],
+    "GET /features/default_scope_probe" => [dsp_status, dsp_headers, dsp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
@@ -1025,6 +1030,23 @@ else
                    "User.normalize_value_for(:email, ...) must strip+downcase in a worker (row 74)"
       assert nzp_parsed["instance_ok"],
                    "user.email = assignment must normalize through the NormalizedValueType in a worker (row 74)"
+
+      # --- Row 78: default_scope / unscoped in a worker ---
+      # GET /default_scope_probe creates two dedicated Category rows
+      # (zulu first, alpha second) so the default ORDER scope (name) and the
+      # natural id order disagree.
+      dsp_key = "GET /features/default_scope_probe"
+      dsp_status = results[dsp_key][0]
+      dsp_body = results[dsp_key][2]
+      assert_equal 200, dsp_status,
+                   "GET /default_scope_probe must return 200 in a worker Ractor (got #{dsp_status}: #{dsp_body[0..200]})"
+      dsp_parsed = JSON.parse(dsp_body)
+      assert dsp_parsed["scoped_alpha_first"],
+                   "default_scope (order by name) must be applied on worker-side reads (row 78)"
+      assert dsp_parsed["unscoped_zulu_first"],
+                   "unscoped must drop the default scope in a worker (row 78)"
+      assert dsp_parsed["orders_differ"],
+                   "scoped and unscoped reads must actually disagree on order (row 78)"
 
       # --- TODO #5: ActiveJob enqueue in a worker Ractor (FIXED in shim) ---
       # GET /job_enqueue_probe runs `WelcomeJob.perform_later(user)` inside a
