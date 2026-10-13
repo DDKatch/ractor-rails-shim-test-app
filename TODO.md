@@ -95,13 +95,23 @@ row, tick it here, note the evidence (test file / probe status).
     rack-multipart parsing in workers.
 17. **[DONE ✅]** `date_select` / `collection_select` (row 99) — add a scheduled
     date + category select to the post form; worker render probe.
-18. **[CHECK] Job `retry_on` / `discard_on` (row 107) — add a flaky job;
-    test enqueues + retry bookkeeping with the test adapter; worker probe for
-    enqueue.
-19. **[CHECK] Enqueue options (row 108) — `WelcomeJob.set(wait: 5.seconds,
-    queue: "low").perform_later` from worker; `assert_enqueued_with` in test.
-20. **[CHECK] Mailer interceptors (row 113) — register a test interceptor
-    (adds a header); assert in `email_delivery_test`; worker-side intercept.
+18. **[DONE ✅]** Job `retry_on` / `discard_on` (row 107) —
+    `job_resilience_test` (retry budget exhausted re-raises; discard_on
+    swallows) + kino `/features/job_resilience_probe`: the rescue-handler
+    declarations are readable from the frozen classes in a worker
+    (`["StandardError"]` / `["ArgumentError"]`).
+19. **[DONE ✅]** Enqueue options (row 108) — `assert_enqueued_with` main-side;
+    kino `/features/job_resilience_probe`: worker-side
+    `set(queue: "low", wait: 2.seconds)` reflects the queue name and a future
+    `scheduled_at`. Required the shim's per-Ractor Concurrent global
+    executors (ScheduledTask's GLOBAL_TIMER_SET / GLOBAL_IO_EXECUTOR constants
+    are unshareable — worker-side scheduled enqueues died with IsolationError).
+20. **[DONE ✅]** Mailer interceptors (row 113) — `mailer_hooks_audit_test`
+    main-side (interceptor mutates at delivery, observer sees the message);
+    kino `/stats/mail_hooks_probe`: the boot-registered interceptor stamps
+    `X-Audit-Interceptor` on worker-delivered mail (shim snapshots the mail
+    gem's hook registries as frozen hook-name lists — previously workers ran
+    an empty list, so main-registered hooks silently never fired).
 21. **[DONE ✅]** AS `CurrentAttributes` (row 129) — set `Current.user` in a
     before_action, read in a worker-rendered view; verify reset semantics
     (per-Ractor? per-thread?) in kino.
@@ -168,7 +178,9 @@ row, tick it here, note the evidence (test file / probe status).
     probe controller; worker probe.
 17. **[CHECK] Mailer delivery methods (row 115) — configure SMTP settings
     shape (delivery won't actually send; assert Mail message build).
-18. **[CHECK] Mailer callbacks (row 116) — `after_action` in UserMailer.
+18. **[DONE ✅]** Mailer callbacks (row 116) — `after_action` in UserMailer
+    stamps `X-Audit-Campaign`; asserted main-side
+    (`mailer_hooks_audit_test`) and in workers (`/stats/mail_hooks_probe`).
 19. **[CHECK] Storage services (rows 125–127) — public service + blob
     download/proxy route probe; mirror/encrypted service optional-low.
 20. **[CHECK] Analyzers / `analyze_later` (row 126) — attach a text blob,

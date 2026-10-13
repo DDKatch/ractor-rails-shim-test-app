@@ -4,9 +4,9 @@ Goal: verify every core Rails feature that **80%+ of production Rails apps** act
 uses, exercise it end-to-end, and record what works vs what breaks under the
 ractor-rails-shim on Ruby 4.0.6 / Rails 8.1.3.
 
-Last updated: 2026-10-13 (rows 75 + 76 worker-verified — signed_id codec pre-warm + bulk-write probe; shim 0.4.2; tally below)
+Last updated: 2026-10-13 (rows 107/108 + 113/116 worker-verified — job resilience, enqueue options, mail hooks, mailer callbacks; tally below)
 
-**Tally: ✅ 102/144 · 🔲 40 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
+**Tally: ✅ 106/144 · 🔲 36 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
 
 ## Feature matrix
 
@@ -129,16 +129,16 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | 104 |                      | Turbo Frames (server-rendered)      | 🔲 To audit (low) | no JS in this app — server-side rendering only |
 | 105 |                      | Turbo Streams (server-rendered responses / model broadcasts) | 🔲 To audit (low) | same |
 | 106 |                      | Asset helpers (`stylesheet_link_tag` via Propshaft) | ✅ Done | layout ships `stylesheet_link_tag :app` |
-| 107 | **Active Job**       | `retry_on` / `discard_on`           | 🔲 To audit | |
-| 108 |                      | Enqueue options (`wait:`, `wait_until:`, `queue:`, `priority:`) | 🔲 To audit | |
+| 107 | **Active Job**       | `retry_on` / `discard_on`           | ✅ Done | main: `job_resilience_test` (retry budget exhausted → re-raises, `discard_on` swallows). Worker: kino `/features/job_resilience_probe` — the `retry_on`/`discard_on` rescue-handler declarations are readable from the frozen classes (`["StandardError"]` / `["ArgumentError"]`) |
+| 108 |                      | Enqueue options (`wait:`, `wait_until:`, `queue:`, `priority:`) | ✅ Done | main: `assert_enqueued_with(job:, queue: "low")` + future `at`. Worker: kino `/features/job_resilience_probe` — `set(queue: "low", wait: 2.seconds).perform_later` from a worker reflects the queue name and a future `scheduled_at` (required the shim's per-Ractor Concurrent global executors: ScheduledTask's timer/notification constants are unshareable) |
 | 109 |                      | Custom argument serializers         | 🔲 To audit | |
 | 110 |                      | Solid Queue adapter                 | 🔲 To audit | separate dispatcher process; enqueue path is DB writes — likely compatible, verify |
 | 111 |                      | Job test helpers (`assert_enqueued_with`, `perform_enqueued_jobs`) | ✅ Done | `welcome_job_test` |
 | 112 |                      | `perform_now` from a worker         | ✅ Done | `mail_deliver_probe` → `deliver_now` (inline perform) in worker → 200 |
-| 113 | **Action Mailer**    | Interceptors & observers            | 🔲 To audit | |
+| 113 | **Action Mailer**    | Interceptors & observers            | ✅ Done | main: `mailer_hooks_audit_test` (interceptor mutates the message at delivery time, observer sees the delivered message). Worker: kino `/stats/mail_hooks_probe` — the boot-registered interceptor stamps `X-Audit-Interceptor` during worker-side `deliver_now` (shim snapshots the mail gem's hook registries as frozen hook-name lists; workers resolve and run them). Stateful observer instances that write class ivars stay main-side |
 | 114 |                      | Multipart emails (HTML + plain text) | ✅ Done | `report_email` renders both parts |
 | 115 |                      | Delivery methods (SMTP settings)    | 🔲 To audit | test delivery ✅ via `:test` adapter; SMTP config unverified |
-| 116 |                      | Mailer callbacks (`before`/`after_action`) | 🔲 To audit | |
+| 116 |                      | Mailer callbacks (`before`/`after_action`) | ✅ Done | main: `mailer_hooks_audit_test` asserts the `after_action`-stamped `X-Audit-Campaign` header. Worker: kino `/stats/mail_hooks_probe` — the same header is stamped on worker-built mail (the callback runs during the worker-side build) |
 | 117 | **Action Mailbox**   | Routing + relay ingress             | ✅ Done | `ApplicationMailbox` routes `:all => :inbox`; `InboxMailbox` records a polymorphic `AuditLog`; migration 20261006000008 |
 | 118 |                      | `InboundEmail` processing (mail parsing, `bounce`, deliver-to-mailbox) | ✅ Done | `test/mailboxes/inbox_mailbox_test.rb` — `receive_inbound_email_from_mail` routes and processes; `mail` gem (pure Ruby) is off the wall |
 | 119 |                      | ActionMailbox test helpers          | ✅ Done | `receive_inbound_email_from_mail` in the mailbox spec (note: `create_inbound_email_from_mail` does NOT route — use the receive_ variant) |
@@ -172,18 +172,18 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 
 | Status | Count | Features |
 |--------|-------|----------|
-| ✅ Done | 102 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 62 (batch processing in workers), 63+64 (aggregates + group/having/distinct in workers), 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–70 (polymorphic, STI, HABTM, nested attributes, counter cache), 73 (dirty tracking in workers), 75 (signed_id round-trip in workers; shim 0.4.2 codec pre-warm), 76 (insert_all/upsert_all in workers), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
-| — of which qualified ✅ | (10 of the 102) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
-| 🔲 To audit | 40 | See `TODO.md` for the check / implement / test plan per row |
+| ✅ Done | 106 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 62 (batch processing in workers), 63+64 (aggregates + group/having/distinct in workers), 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–70 (polymorphic, STI, HABTM, nested attributes, counter cache), 73 (dirty tracking in workers), 75 (signed_id round-trip in workers; shim 0.4.2 codec pre-warm), 76 (insert_all/upsert_all in workers), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 107+108 (ActiveJob retry/discard declarations readable from workers + set(queue:, wait:) enqueue from workers via per-Ractor Concurrent executors), 113+116 (boot-registered interceptor + mailer after_action both run during worker-side delivery via the shim's hook-registry snapshot), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
+| — of which qualified ✅ | (10 of the 106) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
+| 🔲 To audit | 36 | See `TODO.md` for the check / implement / test plan per row |
 | ⛔ Known limitations | 2 | #50 sanitize / simple_format (Nokogiri, permanent) · #90 `around_action` (SymbolicTransport doesn't replay `:around` filters — shim project or documented exclusion) |
 | ❌ Broken (worker) | 0 | none — the last ❌ (#98 `fields_with_errors`) was fixed by the validate-chain pass: worker-side `valid?` replays captured validator descriptors, invalid records no longer save in workers |
 
-Tally: 102 + 40 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-13 (signed_id 75 + bulk writes 76).
+Tally: 106 + 36 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-13 (job resilience 107 + enqueue options 108, mail hooks 113 + mailer callbacks 116).
 
 ## Test Results (as of 2026-10-13)
 
 ```
-157 runs, 615 assertions, 0 failures, 0 errors, 0 skips
+157 runs, 627 assertions, 0 failures, 0 errors, 0 skips
 ```
 
 - **0 failures, 0 errors, 0 skips** — all feature-level tests pass, including the `:ractor` integration suite (no routes 555)
