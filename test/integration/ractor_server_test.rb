@@ -522,6 +522,14 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # from a worker Ractor.
   dsp_status, dsp_headers, dsp_body = dispatch(app, "GET", "/features/default_scope_probe", nil, nil)
 
+  # Strict-loading probe (row 79): StrictLoadingViolationError + includes
+  # readability from a worker Ractor.
+  slp_status, slp_headers, slp_body = dispatch(app, "GET", "/features/strict_loading_probe", nil, nil)
+
+  # Load-async probe (row 77): the query rides the per-Ractor executor and
+  # the relation materializes from a worker Ractor.
+  lap_status, lap_headers, lap_body = dispatch(app, "GET", "/features/load_async_probe", nil, nil)
+
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
   # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
   # patched) — must return 200 {enqueued: true}.
@@ -657,6 +665,8 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/pessimistic_lock_probe" => [plp_status, plp_headers, plp_body],
     "GET /features/normalizes_probe" => [nzp_status, nzp_headers, nzp_body],
     "GET /features/default_scope_probe" => [dsp_status, dsp_headers, dsp_body],
+    "GET /features/strict_loading_probe" => [slp_status, slp_headers, slp_body],
+    "GET /features/load_async_probe" => [lap_status, lap_headers, lap_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
@@ -1047,6 +1057,37 @@ else
                    "unscoped must drop the default scope in a worker (row 78)"
       assert dsp_parsed["orders_differ"],
                    "scoped and unscoped reads must actually disagree on order (row 78)"
+
+      # --- Row 79: strict_loading in a worker ---
+      # GET /strict_loading_probe: a strict_loading record must raise
+      # StrictLoadingViolationError on a lazy association load, while
+      # includes-preloaded associations stay readable.
+      slp_key = "GET /features/strict_loading_probe"
+      slp_status = results[slp_key][0]
+      slp_body = results[slp_key][2]
+      assert_equal 200, slp_status,
+                   "GET /strict_loading_probe must return 200 in a worker Ractor (got #{slp_status}: #{slp_body[0..200]})"
+      slp_parsed = JSON.parse(slp_body)
+      assert slp_parsed["violation_raised"],
+                   "strict_loading must raise StrictLoadingViolationError on a lazy load in a worker (row 79)"
+      assert slp_parsed["preloaded_ok"],
+                   "includes-preloaded associations must stay readable under strict_loading in a worker (row 79)"
+      assert slp_parsed["plain_ok"],
+                   "non-strict records must keep lazy-loading associations in a worker (row 79)"
+
+      # --- Row 77: load_async in a worker ---
+      # GET /load_async_probe: the query rides the per-Ractor executor
+      # (Concurrent futures) and the relation materializes in the worker.
+      lap_key = "GET /features/load_async_probe"
+      lap_status = results[lap_key][0]
+      lap_body = results[lap_key][2]
+      assert_equal 200, lap_status,
+                   "GET /load_async_probe must return 200 in a worker Ractor (got #{lap_status}: #{lap_body[0..200]})"
+      lap_parsed = JSON.parse(lap_body)
+      assert lap_parsed["non_empty"],
+                   "load_async must materialize committed rows in a worker (row 77)"
+      assert lap_parsed["loaded"],
+                   "the load_async relation must report itself loaded after to_a (row 77)"
 
       # --- TODO #5: ActiveJob enqueue in a worker Ractor (FIXED in shim) ---
       # GET /job_enqueue_probe runs `WelcomeJob.perform_later(user)` inside a

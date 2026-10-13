@@ -82,4 +82,39 @@ class AssociationToolkitTest < ActiveSupport::TestCase
     comment = @post.comments.create!(body: "through comment", user: @user)
     assert_equal @category, comment.reload.category
   end
+
+  # --- strict_loading (row 79) ----------------------------------------------------------
+
+  test "strict_loading raises on lazy association load; includes keeps it readable" do
+    strict_post = Post.strict_loading.order(:id).first
+    assert_raises(ActiveRecord::StrictLoadingViolationError) { strict_post.comments.to_a }
+
+    preloaded = Post.strict_loading.includes(:user, :comments).order(:id).first
+    assert preloaded.user.nil? || preloaded.user.is_a?(User)
+    preloaded.comments.to_a
+
+    plain_post = Post.order(:id).first
+    assert plain_post.comments.to_a.is_a?(Array)
+  end
+
+  # --- load_async (row 77) ---------------------------------------------------------------
+
+  # NB: transactional tests keep created rows invisible to the async
+  # executor's separate connection, so this test commits for real
+  # (use_transactional_tests = false) and cleans up after itself.
+  test "load_async materializes rows from the async executor" do
+    self.use_transactional_tests = false
+    probe = nil
+    begin
+      probe = Post.create!(title: "Load Async Probe #{SecureRandom.hex(2)}",
+                           body: "load async probe body")
+      rel = Post.where("title LIKE ?", "%Load Async Probe%").load_async
+      rows = rel.to_a
+      assert rows.any?, "load_async must materialize the committed rows (row 77)"
+      assert_predicate rel, :loaded?
+      assert rows.map(&:title).include?(probe.title)
+    ensure
+      probe&.destroy!
+    end
+  end
 end

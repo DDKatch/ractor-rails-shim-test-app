@@ -357,6 +357,54 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #79: strict_loading. From a worker Ractor: a
+  # strict_loading relation marks the record so accessing a NON-preloaded
+  # association raises ActiveRecord::StrictLoadingViolationError, while
+  # preloaded associations (includes) stay readable. Read-only probe.
+  def strict_loading_probe
+    strict_post = Post.strict_loading.order(:id).first
+    return head(:not_found) unless strict_post
+
+    violation = nil
+    begin
+      strict_post.comments.to_a
+    rescue ActiveRecord::StrictLoadingViolationError => e
+      violation = e.class.name
+    end
+
+    preloaded = Post.strict_loading.includes(:user, :comments).order(:id).first
+    preloaded_ok = preloaded.user.nil? || preloaded.user.is_a?(User)
+    preloaded.comments.to_a
+
+    plain_post = Post.order(:id).first
+    plain_ok = plain_post.comments.to_a.is_a?(Array)
+
+    render json: {
+      violation_raised: violation == "ActiveRecord::StrictLoadingViolationError",
+      violation_class: violation,
+      preloaded_ok: preloaded_ok,
+      plain_ok: plain_ok
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
+  # RAILS_FEATURES.md #77: async queries (load_async). From a worker Ractor:
+  # the query is scheduled on the per-Ractor executor (Concurrent futures —
+  # the same Thread-in-Ractor class as the async job adapter) and the
+  # relation materializes when the future completes.
+  def load_async_probe
+    rel = Post.order(:id).load_async
+    rows = rel.to_a
+    render json: {
+      row_count: rows.size,
+      non_empty: rows.any?,
+      loaded: rel.loaded?
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }
