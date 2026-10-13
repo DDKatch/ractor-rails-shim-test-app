@@ -96,4 +96,48 @@ class FeaturesControllerTest < ActionDispatch::IntegrationTest
       assert body[flag], "text helper flag #{flag} must be true (row 100)"
     end
   end
+
+  # --- config-level probes (rows 115, 134, 138) ----------------------------
+
+  test "config probe: config.x, config_for, tagged logging, mail build" do
+    get "/features/config_probe"
+    assert_response :success
+    body = JSON.parse(response.body)
+
+    assert body["config_x_ok"], "config.x.audit.flag must be readable (row 138)"
+    assert body["config_for_ok"], "config_for(:audit) must merge shared + env sections (row 138)"
+    assert body["tagged_logging_ok"], "Rails.logger.tagged must round-trip the block value (row 134)"
+    assert body["mail_build_ok"], "UserMailer must build a Mail::Message (row 115)"
+
+    # The test env uses the :test adapter; the :smtp + smtp_settings shape
+    # is asserted under production semantics by the kino (row 115).
+    assert_equal :test, Rails.application.config.action_mailer.delivery_method
+  end
+
+  # --- durations / time math (row 132) --------------------------------------
+
+  test "durations probe: duration scopes and time math" do
+    get "/features/durations_probe"
+    assert_response :success
+    body = JSON.parse(response.body)
+
+    assert body["duration_scope_ok"], "Post.where(updated_at: 2.days.ago..) must match fresh rows (row 132)"
+    assert body["time_math_ok"], "end_of_day/beginning_of_day math must hold (row 132)"
+    assert body["with_zone_ok"], "Durations must produce ActiveSupport::TimeWithZone (row 132)"
+  end
+
+  # --- security headers (rows 136, 137) --------------------------------------
+
+  test "security headers are present on responses" do
+    get "/up"
+    assert_response :success
+
+    assert_equal "SAMEORIGIN", response.headers["X-Frame-Options"], "X-Frame-Options default (row 136)"
+    assert_equal "nosniff", response.headers["X-Content-Type-Options"], "X-Content-Type-Options default (row 136)"
+    assert_equal "strict-origin-when-cross-origin", response.headers["Referrer-Policy"], "Referrer-Policy default (row 136)"
+    # Rails 8.1 emits the configured permissions policy under the legacy
+    # "Feature-Policy" header name (the middleware class is
+    # PermissionsPolicy, but the emitted header keeps the old name).
+    assert_match(/camera 'none'/, response.headers["Feature-Policy"].to_s, "configured policy header (row 137)")
+  end
 end

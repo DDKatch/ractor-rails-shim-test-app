@@ -53,5 +53,11 @@ module FullTestApp
     #
     config.time_zone = "Europe/Berlin"
     # config.eager_load_paths << Rails.root.join("extras")
+
+    # RAILS_FEATURES.md #138: custom config. `config.x` namespace +
+    # config/audit.yml read back via `config_for(:audit)` (merged shared +
+    # per-env sections) — exercised by /features/config_probe in both
+    # modes.
+    config.x.audit.flag = true
   end
 end

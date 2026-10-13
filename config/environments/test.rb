@@ -46,6 +46,14 @@ Rails.application.configure do
   # Action Mailer / Active Job test adapters (standard Rails test-env
   # defaults): deliver_now collects messages instead of hitting SMTP;
   # the test queue adapter records enqueues for assert_enqueued_with.
+  # RAILS_FEATURES.md #137: Permissions-Policy (same policy as production;
+  # asserted in features_controller_test).
+  config.permissions_policy do |policy|
+    policy.camera :none
+    policy.microphone :none
+    policy.geolocation :none
+  end
+
   config.action_mailer.delivery_method = :test
   config.action_mailer.perform_deliveries = true
 

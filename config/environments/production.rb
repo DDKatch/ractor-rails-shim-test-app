@@ -50,6 +50,16 @@ Rails.application.configure do
   # config.ssl_options = { redirect: { exclude: ->(request) { request.path == "/up" } } }
 
   # Log to STDOUT with the current request id as a default log tag.
+  # RAILS_FEATURES.md #137: Permissions-Policy — the header is NOT set
+  # unless the policy is configured; declare the kino-app's policy here so
+  # responses carry it (asserted in features_controller_test and from
+  # workers via the kino).
+  config.permissions_policy do |policy|
+    policy.camera :none
+    policy.microphone :none
+    policy.geolocation :none
+  end
+
   config.log_tags = [ :request_id ]
   config.logger   = ActiveSupport::TaggedLogging.logger(STDOUT)
 

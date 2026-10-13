@@ -51,6 +51,8 @@ get "/assoc_probe", to: "stats#assoc_probe"
     get "/builder_form_probe", to: "features#builder_form_probe"
     get "/text_helpers_probe", to: "features#text_helpers_probe"
     get "/composite_pk_probe", to: "features#composite_pk_probe"
+    get "/config_probe", to: "features#config_probe"
+    get "/durations_probe", to: "features#durations_probe"
     get "/current", to: "features#current_attrs"
     get "/rich_text", to: "features#rich_text"
   end

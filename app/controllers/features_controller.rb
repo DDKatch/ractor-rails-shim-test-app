@@ -458,6 +458,56 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md rows #115 + #134 + #138: config-level probe.
+  # - SMTP delivery shape: production semantics set :smtp + address/port
+  #   (the kino runs production semantics; the main test env uses :test).
+  # - Mail message build: UserMailer welcome_email renders to a
+  #   Mail::Message without delivering.
+  # - Tagged logging: Rails.logger.tagged round-trips the block value
+  #   (config.log_tags = [:request_id] is already set for production).
+  # - config.x + config_for(:audit): custom namespace + per-env yml.
+  def config_probe
+    user = User.order(:id).first
+    return head(:not_found) unless user
+
+    tagged_result = (Rails.logger.tagged("config-probe") { "tagged-value" } rescue "ERR:#{($!).class}")
+    member_diag = Rails.logger.broadcasts.map { |l| "#{l.class}:#{l.respond_to?(:tagged)}" }.join(",")
+    audit_cfg = Rails.application.config_for(:audit)
+    mailer_cfg = Rails.application.config.action_mailer
+    message = UserMailer.welcome_email(user).message
+
+    render json: {
+      config_x_ok: Rails.application.config.x.audit.flag == true,
+      config_for_ok: audit_cfg.is_a?(Hash) && audit_cfg["sweep_hour"].present?,
+      tagged_logging_ok: tagged_result == "tagged-value",
+      member_diag: member_diag,
+      smtp_shape_ok: mailer_cfg.delivery_method == :smtp &&
+                     mailer_cfg.smtp_settings.is_a?(Hash) &&
+                     mailer_cfg.smtp_settings[:address] == "127.0.0.1" &&
+                     mailer_cfg.smtp_settings[:port] == 1025,
+      mail_build_ok: message.is_a?(Mail::Message) && message.subject.present?
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
+  # RAILS_FEATURES.md #132: durations / time math from a worker Ractor —
+  # Duration-range scope (2.days.ago..), end_of_day/beginning_of_day math.
+  def durations_probe
+    fresh_count = Post.where(updated_at: 2.days.ago..).count
+    eod = 1.day.from_now.end_of_day
+    bom = Time.current.beginning_of_day
+
+    render json: {
+      duration_scope_ok: fresh_count > 0,
+      time_math_ok: eod > Time.current && bom < Time.current,
+      with_zone_ok: (2.days.ago.is_a?(ActiveSupport::TimeWithZone)) &&
+                    (1.hour.from_now.is_a?(ActiveSupport::TimeWithZone))
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #80: composite primary keys from a worker Ractor.
   # region_stats has PK (region, year) — no synthetic id. Exercise
   # tuple find, update by PK, and the duplicate-PK violation; cleaned

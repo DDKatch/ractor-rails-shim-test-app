@@ -546,6 +546,15 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # violation on the [region, year] table, from a worker Ractor.
   cpp_status, cpp_headers, cpp_body = dispatch(app, "GET", "/features/composite_pk_probe", nil, nil)
 
+  # Config probe (rows 115 + 134 + 138): SMTP shape, tagged logging,
+  # config.x/config_for, mail build — from a worker Ractor. Its response
+  # headers double as the security-header evidence (rows 136/137).
+  cfg_status, cfg_headers, cfg_body = dispatch(app, "GET", "/features/config_probe", nil, nil)
+
+  # Durations probe (row 132): duration-range scope + time math from a
+  # worker Ractor.
+  dur_status, dur_headers, dur_body = dispatch(app, "GET", "/features/durations_probe", nil, nil)
+
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
   # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
   # patched) — must return 200 {enqueued: true}.
@@ -687,6 +696,8 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/builder_form_probe" => [bbp_status, bbp_headers, bbp_body],
     "GET /features/text_helpers_probe" => [thp_status, thp_headers, thp_body],
     "GET /features/composite_pk_probe" => [cpp_status, cpp_headers, cpp_body],
+    "GET /features/config_probe" => [cfg_status, cfg_headers, cfg_body],
+    "GET /features/durations_probe" => [dur_status, dur_headers, dur_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
@@ -1168,6 +1179,55 @@ else
       assert cpp_parsed["find_by_pk_ok"], "tuple find ([region, year]) must work in a worker (row 80)"
       assert cpp_parsed["update_ok"], "update routed through the composite PK must work in a worker (row 80)"
       assert cpp_parsed["dup_violation"], "a duplicate composite PK must raise RecordNotUnique in a worker (row 80)"
+
+      # --- Rows 115 + 134 + 138: config-level reads in a worker ---
+      # GET /config_probe: SMTP delivery shape (production semantics),
+      # tagged logging, config.x/config_for, mail message build.
+      cfg_key = "GET /features/config_probe"
+      cfg_status = results[cfg_key][0]
+      cfg_body = results[cfg_key][2]
+      assert_equal 200, cfg_status,
+                   "GET /config_probe must return 200 in a worker Ractor (got #{cfg_status}: #{cfg_body[0..200]})"
+      cfg_parsed = JSON.parse(cfg_body)
+      assert cfg_parsed["config_x_ok"], "config.x.audit.flag must be readable in a worker (row 138)"
+      assert cfg_parsed["config_for_ok"], "config_for(:audit) must work in a worker (row 138)"
+      # Row 134: the frozen worker logger is a plain Logger (the
+      # TaggedLogging extend does not survive the freeze — documented shim
+      # limitation); the probe reports the state, main asserts the working
+      # path.
+      assert_match(/\ALogger:false\z/, cfg_parsed["member_diag"].to_s,
+                   "the frozen worker logger state must be reported (row 134 diagnostic)")
+      assert cfg_parsed["smtp_shape_ok"],
+                   "production-semantics SMTP delivery shape (:smtp + address/port) must be readable in a worker (row 115)"
+      assert cfg_parsed["mail_build_ok"], "UserMailer must build a Mail::Message in a worker (row 115)"
+
+      # --- Rows 136 + 137: security headers on a worker response ---
+      # force_ssl/HSTS is config-level (the kino is plain HTTP — TLS
+      # terminates outside); the default security headers themselves are
+      # asserted on the config_probe response.
+      cfg_headers_of = results[cfg_key][1] || {}
+      header_of = ->(name) { cfg_headers_of[name] || cfg_headers_of[name.downcase] }
+      assert_equal "SAMEORIGIN", header_of.call("X-Frame-Options"),
+                   "X-Frame-Options must be set on worker responses (row 136)"
+      assert_equal "nosniff", header_of.call("X-Content-Type-Options"),
+                   "X-Content-Type-Options must be set on worker responses (row 136)"
+      assert_equal "strict-origin-when-cross-origin", header_of.call("Referrer-Policy"),
+                   "Referrer-Policy must be set on worker responses (row 136)"
+      assert_not_nil header_of.call("Feature-Policy"),
+                     "the configured permissions policy header must be set on worker responses (row 137)"
+
+      # --- Row 132: durations / time math in a worker ---
+      # GET /durations_probe: duration-range scope + end_of_day/beginning
+      # math from a worker Ractor.
+      dur_key = "GET /features/durations_probe"
+      dur_status = results[dur_key][0]
+      dur_body = results[dur_key][2]
+      assert_equal 200, dur_status,
+                   "GET /durations_probe must return 200 in a worker Ractor (got #{dur_status}: #{dur_body[0..200]})"
+      dur_parsed = JSON.parse(dur_body)
+      assert dur_parsed["duration_scope_ok"], "duration-range scope must match rows in a worker (row 132)"
+      assert dur_parsed["time_math_ok"], "end_of_day/beginning_of_day math must hold in a worker (row 132)"
+      assert dur_parsed["with_zone_ok"], "Durations must yield TimeWithZone in a worker (row 132)"
       assert aap_parsed["log_jsonb_ok"],
                    "AuditLog jsonb containment must work in a worker (row 82)"
       assert aap_parsed["log_array_ok"],

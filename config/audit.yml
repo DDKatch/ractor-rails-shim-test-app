@@ -1,0 +1,11 @@
+# RAILS_FEATURES.md row 138: config_for — shared defaults merged with the
+# per-env section; read back via Rails.application.config_for(:audit).
+shared:
+  sweep_hour: 3
+  token: "audit-shared-token"
+
+test:
+  sweep_hour: 4
+
+production:
+  sweep_hour: 5
