@@ -236,8 +236,12 @@ row, tick it here, note the evidence (test file / probe status).
     `http_basic_authenticate_with` on FeaturesController#basic_auth;
     worker kino dispatch sends the Authorization header (basic scope;
     digest/token documented as pending in the row note).
-17. **[CHECK] Mailer delivery methods (row 115) — configure SMTP settings
-    shape (delivery won't actually send; assert Mail message build).
+17. **[DONE ✅]** Mailer delivery methods (row 115) — kino
+    `/features/config_probe` in a worker: production delivery shape
+    (`:smtp`, `127.0.0.1:1025`) reads from `config.action_mailer` and
+    `UserMailer.welcome_email(...).message` builds a `Mail::Message`
+    worker-side (no real send — the row-113/116 delivery path already
+    proves `deliver_now`). Main test env uses the `:test` adapter.
 18. **[DONE ✅]** Mailer callbacks (row 116) — `after_action` in UserMailer
     stamps `X-Audit-Campaign`; asserted main-side
     (`mailer_hooks_audit_test`) and in workers (`/stats/mail_hooks_probe`).
@@ -245,15 +249,31 @@ row, tick it here, note the evidence (test file / probe status).
     download/proxy route probe; mirror/encrypted service optional-low.
 20. **[CHECK] Analyzers / `analyze_later` (row 126) — attach a text blob,
     assert metadata extraction.
-21. **[CHECK] Durations / time math (row 132) — `2.days.ago`-style scopes
-    in tests (likely already passing implicitly).
-22. **[CHECK] Tagged / broadcast logging (row 134) — `config.log_tags` +
-    `Rails.logger.tagged` in a worker probe.
-23. **[CHECK] force_ssl / security headers (rows 136–137) — assert
-    headers in a controller test; kino terminates TLS outside, so this is
-    config-level.
-24. **[CHECK] `config.x` / `config_for` (row 138) — add
-    `config.x.audit.flag` + `config/audit.yml`; read in a worker probe.
+21. **[DONE ✅]** Durations / time math (row 132) — kino
+    `/features/durations_probe` in a worker: duration-range scope
+    (`Post.where(updated_at: 2.days.ago..)` matches fresh rows),
+    `end_of_day`/`beginning_of_day` math, and Duration →
+    `TimeWithZone`. Pure Ruby, no shim involvement.
+22. **[DONE ✅]** Tagged / broadcast logging (row 134) — main-mode:
+    `config.log_tags = [:request_id]` present and
+    `Rails.logger.tagged` round-trips the block value
+    (`features_controller_test`). Worker-side: `Rails.logger` is a
+    frozen `BroadcastLogger` whose member is a plain `Logger` — the
+    `TaggedLogging` extend does not survive the shim's logger freeze
+    (documented in the row note as a known limitation; the probe
+    reports the state, requests never call `tagged` worker-side).
+23. **[DONE ✅]** force_ssl / security headers (rows 136–137) — default
+    security headers (X-Frame-Options, X-Content-Type-Options,
+    Referrer-Policy) asserted main + worker (kino header assertions).
+    Permissions policy configured via `config.permissions_policy`; Rails
+    8.1 emits it under the legacy `Feature-Policy` header name.
+    `force_ssl`/HSTS stays config-level (kino is plain HTTP).
+24. **[DONE ✅]** `config.x` / `config_for` (row 138) — `config.x.audit.flag`
+    + `config/audit.yml` (shared + per-env); kino `/features/config_probe`
+    reads both from a worker. Required shim `66d3338`:
+    `Railtie::Configuration`'s `@@options` class variable is forbidden
+    cross-Ractor — workers now read a frozen freeze-time snapshot
+    (`RRS_FROZEN_OPTIONS`) with a per-Ractor IES overlay for writes.
 
 ## P3 — niche / low priority
 
