@@ -124,6 +124,19 @@ class FeaturesControllerTest < ActionDispatch::IntegrationTest
     assert body["duration_scope_ok"], "Post.where(updated_at: 2.days.ago..) must match fresh rows (row 132)"
     assert body["time_math_ok"], "end_of_day/beginning_of_day math must hold (row 132)"
     assert body["with_zone_ok"], "Durations must produce ActiveSupport::TimeWithZone (row 132)"
+    # --- Row 131: the app time zone ---
+    assert body["default_zone_ok"], "Time.zone must be Europe/Berlin (config.time_zone, row 131)"
+    assert body["attribute_zone_ok"], "AR timestamps must convert to the app zone (row 131)"
+    assert body["use_zone_ok"], "Time.use_zone must round-trip (row 131)"
+  end
+
+  test "error probe: Rails.error handle swallows, record re-raises" do
+    get "/features/error_probe"
+    assert_response :success
+    body = JSON.parse(response.body)
+
+    assert body["handle_ok"], "Rails.error.handle must report + swallow (row 133)"
+    assert body["record_ok"], "Rails.error.record must report + re-raise (row 133)"
   end
 
   # --- security headers (rows 136, 137) --------------------------------------

@@ -562,9 +562,14 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # headers double as the security-header evidence (rows 136/137).
   cfg_status, cfg_headers, cfg_body = dispatch(app, "GET", "/features/config_probe", nil, nil)
 
-  # Durations probe (row 132): duration-range scope + time math from a
-  # worker Ractor.
+  # Durations probe (row 132) + time zones (row 131): duration-range scope,
+  # time math, and the app time zone (config.time_zone) from a worker
+  # Ractor.
   dur_status, dur_headers, dur_body = dispatch(app, "GET", "/features/durations_probe", nil, nil)
+
+  # Error reporter probe (row 133): Rails.error.handle swallows + reports;
+  # Rails.error.record re-raises — from a worker Ractor.
+  err_status, err_headers, err_body = dispatch(app, "GET", "/features/error_probe", nil, nil)
 
   # Storage probe (rows 125 + 126 + the download half of 127): public disk
   # service resolves + routes upload/download worker-side; the analyzer
@@ -715,6 +720,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/composite_pk_probe" => [cpp_status, cpp_headers, cpp_body],
     "GET /features/config_probe" => [cfg_status, cfg_headers, cfg_body],
     "GET /features/durations_probe" => [dur_status, dur_headers, dur_body],
+    "GET /features/error_probe" => [err_status, err_headers, err_body],
     "GET /storage_probe" => [stp_status, stp_headers, stp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
@@ -1255,6 +1261,20 @@ else
       assert dur_parsed["duration_scope_ok"], "duration-range scope must match rows in a worker (row 132)"
       assert dur_parsed["time_math_ok"], "end_of_day/beginning_of_day math must hold in a worker (row 132)"
       assert dur_parsed["with_zone_ok"], "Durations must yield TimeWithZone in a worker (row 132)"
+      # --- Row 131: the app time zone applies worker-side ---
+      assert dur_parsed["default_zone_ok"], "Time.zone must be Europe/Berlin in a worker (row 131)"
+      assert dur_parsed["attribute_zone_ok"], "AR timestamps must convert to the app zone in a worker (row 131)"
+      assert dur_parsed["use_zone_ok"], "Time.use_zone must round-trip in a worker (row 131)"
+
+      # --- Row 133: the error reporter in a worker ---
+      err_key = "GET /features/error_probe"
+      err_status = results[err_key][0]
+      err_body = results[err_key][2]
+      assert_equal 200, err_status,
+                   "GET /error_probe must return 200 in a worker Ractor (got #{err_status}: #{err_body[0..200]})"
+      err_parsed = JSON.parse(err_body)
+      assert err_parsed["handle_ok"], "Rails.error.handle must report + swallow in a worker (row 133)"
+      assert err_parsed["record_ok"], "Rails.error.record must report + re-raise in a worker (row 133)"
 
       # --- Rows 125 + 126: public service + analyzer chain in a worker ---
       # GET /storage_probe: the public disk service resolves and routes

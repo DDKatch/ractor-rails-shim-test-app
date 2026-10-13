@@ -498,11 +498,47 @@ class FeaturesController < ApplicationController
     eod = 1.day.from_now.end_of_day
     bom = Time.current.beginning_of_day
 
+    # RAILS_FEATURES.md #131: the app time zone (config.time_zone =
+    # "Europe/Berlin" in application.rb) applies worker-side — Time.zone,
+    # an AR timestamp attribute, and a Time.use_zone round-trip.
+    post_zone = Post.order(:id).first&.created_at&.in_time_zone
+    use_zone_result = Time.use_zone("UTC") { Time.zone.name }
+
     render json: {
       duration_scope_ok: fresh_count > 0,
       time_math_ok: eod > Time.current && bom < Time.current,
       with_zone_ok: (2.days.ago.is_a?(ActiveSupport::TimeWithZone)) &&
-                    (1.hour.from_now.is_a?(ActiveSupport::TimeWithZone))
+                    (1.hour.from_now.is_a?(ActiveSupport::TimeWithZone)),
+      default_zone_ok: Time.zone.name == "Europe/Berlin",
+      attribute_zone_ok: post_zone.nil? || post_zone.time_zone.name == "Europe/Berlin",
+      use_zone_ok: use_zone_result == "UTC" && Time.zone.name == "Europe/Berlin"
+    }
+  rescue => e
+    trace = e.backtrace.to_a[0, 6]
+    render json: { error: "#{e.class}: #{e.message}", trace: trace }, status: 500
+  end
+
+  # RAILS_FEATURES.md #133: the error reporter from a worker Ractor.
+  # - Rails.error.handle: reports + swallows (returns the fallback, nil by
+  #   default) — the default log subscriber writes through the frozen
+  #   worker logger.
+  # - Rails.error.record: reports AND re-raises.
+  def error_probe
+    handle_result = Rails.error.handle(severity: :info) do
+      raise StandardError, "reported-and-swallowed"
+    end
+    handle_ok = handle_result.nil?
+
+    record_ok = begin
+      Rails.error.record { raise ArgumentError, "recorded-and-reraised" }
+      false
+    rescue ArgumentError => e
+      e.message == "recorded-and-reraised"
+    end
+
+    render json: {
+      handle_ok: handle_ok,
+      record_ok: record_ok
     }
   rescue => e
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
