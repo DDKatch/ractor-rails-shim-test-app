@@ -18,7 +18,7 @@
       the outer key includes the page and the newest post update, so any post
       write (incl. comment touch-through) invalidates the whole index. The
       inner `cache post` fragments survive sibling post changes. %>
-  <% cache ["posts/index-v1", @posts.current_page, Post.maximum(:updated_at)] do %>
+  <% cache ["posts/index-v1", params[:q].to_s, @posts.current_page, Post.maximum(:updated_at)] do %>
     <div class="space-y-4">
       <%# RAILS_FEATURES.md #96: collection partial (see posts/_card.html.erb) %>
       <%= render partial: "card", collection: @posts %>
