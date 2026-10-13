@@ -165,7 +165,12 @@ row, tick it here, note the evidence (test file / probe status).
 4. **[DONE ✅]** STI or delegated types (row 67) — smallest: `Comment::Admin`? Prefer
     a `Vehicle/Car`-style demo on a throwaway model.
 5. **[DONE ✅]** HABTM / `has_one :through` (row 68) — tiny join-table model.
-6. **[CHECK] `default_scope` / `unscoped` (row 78) — on Category.
+6. **[DONE ✅]** `default_scope` / `unscoped` (row 78) — `Category
+    default_scope { order(:name) }` (ORDER-based, safe for existing
+    callers). kino `/features/default_scope_probe` in a worker: two
+    dedicated rows created zulu-first so name order (default scope) and
+    id order (unscoped) disagree — scope applied on worker-side reads,
+    removed by `unscoped`. Main-mode coverage in `category_test`.
 7. **[DONE ✅]** `strict_loading` (row 79) — kino
     `/features/strict_loading_probe` in a worker: a `Post.strict_loading`
     record raises `ActiveRecord::StrictLoadingViolationError` on a lazy
