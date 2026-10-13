@@ -548,6 +548,10 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   bp_status, _bp_headers, bp_body = dispatch(app, "GET", "/features/batch_probe", nil, nil)
   # Aggregate probe (rows 63+64): worker-side aggregates + grouping.
   agr_status, _agr_headers, agr_body = dispatch(app, "GET", "/features/aggregate_probe", nil, nil)
+  # Signed-id probe (row 75): worker-side signed_id → find_signed round-trip.
+  ss_status, _ss_headers, ss_body = dispatch(app, "GET", "/features/signed_id_probe", nil, nil)
+  # Bulk probe (row 76): worker-side insert_all / upsert_all on tags.
+  bk_status, _bk_headers, bk_body = dispatch(app, "GET", "/features/bulk_probe", nil, nil)
   # The CSRF token is bound to the session created during the GET — replay
   # that session cookie on the multipart POST (same pattern as the sign-in
   # flow), otherwise verify_authenticity_token compares against a fresh
@@ -633,6 +637,8 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/dirty_probe" => [dp_status, nil, dp_body],
     "GET /features/batch_probe" => [bp_status, nil, bp_body],
     "GET /features/aggregate_probe" => [agr_status, nil, agr_body],
+    "GET /features/signed_id_probe" => [ss_status, nil, ss_body],
+    "GET /features/bulk_probe" => [bk_status, nil, bk_body],
     "POST /features/form_echo (multipart)" => [fe_status, fe_headers, fe_body],
     "GET /features/current" => [ca_status, ca_headers, ca_body],
     "GET /features/basic_auth (401)" => [ba401_status, ba401_headers, ba401_body],
@@ -1126,6 +1132,37 @@ else
                    "worker-side having('COUNT(id) > 0') must keep non-empty groups"
       assert_operator agr_json["distinct_titles"], :<=, 999,
                       "worker-side distinct.count must query"
+
+      # --- Row 75: worker-side signed_id round-trip -------------------------
+      ss_key = "GET /features/signed_id_probe"
+      ss_status = results[ss_key][0]
+      ss_body = results[ss_key][2]
+      assert_equal 200, ss_status,
+                   "GET /features/signed_id_probe must return 200 (got #{ss_status}: #{ss_body[0..200]})"
+      ss_json = JSON.parse(ss_body)
+      assert_equal true, ss_json["roundtrip"],
+                   "worker-side Post.find_signed(signed_id) must resolve the same record " \
+                   "(MessageVerifier sign + verify in a worker Ractor)"
+      assert_equal true, ss_json["invalid_returns_nil"],
+                   "worker-side find_signed must return nil for a garbage signature"
+      assert_equal true, ss_json["bang_raises"],
+                   "worker-side find_signed! must raise ActiveSupport::MessageVerifier::InvalidSignature"
+
+      # --- Row 76: worker-side insert_all / upsert_all ----------------------
+      bk_key = "GET /features/bulk_probe"
+      bk_status = results[bk_key][0]
+      bk_body = results[bk_key][2]
+      assert_equal 200, bk_status,
+                   "GET /features/bulk_probe must return 200 (got #{bk_status}: #{bk_body[0..200]})"
+      bk_json = JSON.parse(bk_body)
+      assert_equal 3, bk_json["inserted_count"],
+                   "worker-side Tag.insert_all! must bulk-insert all rows"
+      assert_equal 1, bk_json["upserted_count"],
+                   "worker-side Tag.upsert_all(unique_by: :name) must upsert the row"
+      assert_equal true, bk_json["no_duplicate_after_upsert"],
+                   "worker-side upsert must UPDATE the existing row, not duplicate it"
+      assert_equal true, bk_json["unique_conflict_raises"],
+                   "worker-side duplicate insert_all! must hit the unique index and raise"
 
       # --- Row 101: multipart/form-data POST through Rack's parser ---------
       fe_key = "POST /features/form_echo (multipart)"

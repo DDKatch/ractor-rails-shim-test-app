@@ -151,6 +151,66 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #75: signed_id — sign + find_signed round-trip exercised
+  # in a worker Ractor (MessageVerifier path, previously only implied via
+  # Devise/ActiveStorage).
+  def signed_id_probe
+    post = Post.order(:id).first
+    return head(:not_found) unless post
+
+    sid = post.signed_id(expires_in: 1.hour)
+    render json: {
+      roundtrip: Post.find_signed(sid)&.id == post.id,
+      invalid_returns_nil: Post.find_signed("totally-invalid-signature").nil?,
+      bang_raises: begin
+        Post.find_signed!("totally-invalid-signature")
+        false
+      rescue ActiveSupport::MessageVerifier::InvalidSignature
+        true
+      end
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
+  # RAILS_FEATURES.md #76: insert_all / upsert_all — bulk-write tags in a
+  # worker Ractor (skips validations/callbacks, straight INSERT/UPSERT).
+  def bulk_probe
+    now = Time.current
+    base = "Bulk #{now.to_i} #{rand(10_000)}"
+    rows = Array.new(3) { |i| { name: "#{base} insert #{i}", created_at: now, updated_at: now } }
+    inserted = Tag.insert_all!(rows)
+
+    # Upsert: insert a row, then upsert the same unique name with a new
+    # timestamp — the second write must UPDATE, not duplicate.
+    unique_name = "#{base} upsert"
+    Tag.insert_all!([{ name: unique_name, created_at: now, updated_at: now }])
+    upserted = Tag.upsert_all([{ name: unique_name, created_at: now, updated_at: now }], unique_by: :name)
+
+    # The unique index on name must fire for a duplicate bulk INSERT. Run the
+    # expected-conflict insert inside a nested transaction (savepoint) so the
+    # aborted statement doesn't poison an enclosing transaction (e.g. a
+    # transactional test that visits this route).
+    conflict_raises = false
+    Tag.transaction(requires_new: true) do
+      begin
+        Tag.insert_all!([{ name: rows.first[:name], created_at: now, updated_at: now }])
+      rescue ActiveRecord::RecordNotUnique
+        conflict_raises = true
+        raise ActiveRecord::Rollback
+      end
+    end
+
+    render json: {
+      inserted_count: inserted.count,
+      upserted_count: upserted.count,
+      no_duplicate_after_upsert: Tag.where(name: unique_name).count == 1,
+      unique_conflict_raises: conflict_raises
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }
