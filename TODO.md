@@ -115,11 +115,16 @@ row, tick it here, note the evidence (test file / probe status).
 21. **[DONE ✅]** AS `CurrentAttributes` (row 129) — set `Current.user` in a
     before_action, read in a worker-rendered view; verify reset semantics
     (per-Ractor? per-thread?) in kino.
-22. **[CHECK] Time zones (row 131) — `config.time_zone = "Europe/Berlin"`;
-    render `in_time_zone` from a worker view probe.
-23. **[CHECK] `Rails.error` reporting (row 133) — rescue_from already
-    handles app errors; verify a worker-raised error reaches the ErrorReporter
-    + log subscriber path.
+22. **[DONE ✅]** Time zones (row 131) — `config.time_zone = "Europe/Berlin"`
+    verified worker-side via `/durations_probe` zone flags: `Time.zone`
+    name, AR timestamp conversion, `Time.use_zone` round-trip (shim
+    `9a44615`: Ractor-aware `TimeZone.[]`, `TZInfo::DataSource.get`,
+    shareable `TimeZone::MAPPING`).
+23. **[DONE ✅]** `Rails.error` reporting (row 133) — `/error_probe` in a
+    worker: `Rails.error.handle` reports + swallows (log subscriber
+    writes through the frozen worker logger); `Rails.error.record`
+    reports + re-raises. Custom subscribers/context not exercised
+    (qualified).
 24. **[DONE] Action Text (rows 120–121) — `has_rich_text :content` on Post
     (migration 20261006000007); write + sanitize + render verified in the
     MAIN ractor (`test/controllers/rich_text_test.rb`). Worker-side render
@@ -245,10 +250,20 @@ row, tick it here, note the evidence (test file / probe status).
 18. **[DONE ✅]** Mailer callbacks (row 116) — `after_action` in UserMailer
     stamps `X-Audit-Campaign`; asserted main-side
     (`mailer_hooks_audit_test`) and in workers (`/stats/mail_hooks_probe`).
-19. **[CHECK] Storage services (rows 125–127) — public service + blob
-    download/proxy route probe; mirror/encrypted service optional-low.
-20. **[CHECK] Analyzers / `analyze_later` (row 126) — attach a text blob,
-    assert metadata extraction.
+19. **[DONE ✅]** Storage services (rows 125–127) — kino
+    `/storage_probe` + follow-up proxy dispatch in a worker: a second
+    PUBLIC disk service (`test_public`) resolves and routes
+    upload/download worker-side; `blob.download` round-trips; the real
+    `/rails/active_storage/blobs/proxy/:signed_id/:filename` route
+    streams 200 + the stored bytes + content type (shim `a9059bc`:
+    inline worker streaming + per-Ractor interlock + shareable
+    SPECIAL_KEYS). Mirror service not exercised (optional-low).
+20. **[DONE ✅]** Analyzers / `analyze_later` (row 126) — kino
+    `/storage_probe` in a worker: `blob.analyze` on a text blob runs the
+    analyzer chain (NullAnalyzer fallback) and `blob.analyzed?` flips.
+    Image/video/audio analyzers need native libs — not exercised;
+    `analyze_later` from an attachment callback is the row-120
+    block-callback situation.
 21. **[DONE ✅]** Durations / time math (row 132) — kino
     `/features/durations_probe` in a worker: duration-range scope
     (`Post.where(updated_at: 2.days.ago..)` matches fresh rows),
