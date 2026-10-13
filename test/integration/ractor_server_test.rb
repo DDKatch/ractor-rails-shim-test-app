@@ -506,6 +506,10 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # rescue-handlers visibility from a worker Ractor.
   jrp_status, jrp_headers, jrp_body = dispatch(app, "GET", "/features/job_resilience_probe", nil, nil)
 
+  # Optimistic locking probe (row 71): lock_version bump + StaleObjectError
+  # from a worker Ractor.
+  olp_status, olp_headers, olp_body = dispatch(app, "GET", "/features/optimistic_lock_probe", nil, nil)
+
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
   # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
   # patched) — must return 200 {enqueued: true}.
@@ -637,6 +641,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /mail_deliver_probe" => [mdp_status, mdp_headers, mdp_body],
     "GET /mail_hooks_probe" => [mhp_status, mhp_headers, mhp_body],
     "GET /features/job_resilience_probe" => [jrp_status, jrp_headers, jrp_body],
+    "GET /features/optimistic_lock_probe" => [olp_status, olp_headers, olp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
@@ -958,6 +963,27 @@ else
                    "FlakyJob's retry_on declaration must be readable from a worker (row 107)"
       assert_includes jrp_parsed["discard_handlers"], "ArgumentError",
                    "DiscardJob's discard_on declaration must be readable from a worker (row 107)"
+
+      # --- Row 71: optimistic locking in a worker ---
+      # GET /optimistic_lock_probe loads two copies of the same post inside
+      # the worker, saves the first (bumping lock_version), and expects the
+      # second save to raise ActiveRecord::StaleObjectError.
+      olp_key = "GET /features/optimistic_lock_probe"
+      olp_status = results[olp_key][0]
+      olp_body = results[olp_key][2]
+      assert_equal 200, olp_status,
+                   "GET /optimistic_lock_probe must return 200 in a worker Ractor (got #{olp_status}: #{olp_body[0..200]})"
+      olp_parsed = JSON.parse(olp_body)
+      assert olp_parsed["locking_enabled"],
+                   "Post must have optimistic locking enabled (lock_version column, row 71)"
+      assert olp_parsed["stale_raised"],
+                   "a stale save (outdated lock_version) must raise ActiveRecord::StaleObjectError in a worker (row 71)"
+      assert_equal "ActiveRecord::StaleObjectError", olp_parsed["stale_error"], "row 71"
+      assert olp_parsed["version_incremented"],
+                   "the winning save must bump lock_version (row 71)"
+      assert olp_parsed["winner_title_present"], "the winning save must persist (row 71)"
+      assert olp_parsed["loser_title_absent"],
+                   "the stale save must not touch the row (row 71)"
 
       # --- TODO #5: ActiveJob enqueue in a worker Ractor (FIXED in shim) ---
       # GET /job_enqueue_probe runs `WelcomeJob.perform_later(user)` inside a

@@ -234,6 +234,52 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #71: optimistic locking (lock_version). Rails turns it
+  # on automatically once the column exists; no code needed on the model.
+  # From a worker Ractor: a dedicated probe row is created, two copies are
+  # loaded, the first save wins and bumps lock_version, the second save must
+  # raise ActiveRecord::StaleObjectError (and must NOT touch the row). The
+  # row is destroyed afterwards so the probe never disturbs other kino
+  # probes (e.g. the create-proof row asserted via LIKE below).
+  def optimistic_lock_probe
+    probe = Post.create!(title: "Optimistic Probe #{Time.current.to_i}",
+                         body: "optimistic locking probe body")
+    winner = Post.find(probe.id)
+    loser = Post.find(probe.id)
+    starting_version = winner.lock_version
+
+    winner.update!(title: "Optimistic Winner #{Time.current.to_i}")
+
+    stale_raised = false
+    stale_error = nil
+    begin
+      loser.update!(title: "Optimistic Loser")
+    rescue ActiveRecord::StaleObjectError => e
+      stale_raised = true
+      stale_error = e.class.name
+    end
+
+    fresh = Post.find(probe.id)
+    # NB: destroy via the FRESH copy — `probe` is stale after the winning
+    # save and would itself raise StaleObjectError on destroy!
+    # (Which is the feature under test working on the destroy path too.)
+    fresh.destroy!
+    render json: {
+      # NB: ClassMethods#locking_enabled? returns the truthy COLUMN (lock
+      # optimistically && columns_hash[locking_column]), so coerce to bool.
+      locking_enabled: !Post.locking_enabled?.nil?,
+      starting_version: starting_version,
+      stale_raised: stale_raised,
+      stale_error: stale_error,
+      winner_lock_version: fresh.lock_version,
+      version_incremented: fresh.lock_version == starting_version + 1,
+      winner_title_present: fresh.title.to_s.start_with?("Optimistic Winner"),
+      loser_title_absent: !fresh.title.to_s.start_with?("Optimistic Loser")
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }

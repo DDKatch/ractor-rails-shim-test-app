@@ -11,6 +11,9 @@ class Post < ApplicationRecord
   # RAILS_FEATURES.md #120: rich text via Action Text.
   has_rich_text :content
 
+  # RAILS_FEATURES.md #71: optimistic locking — enabled automatically by the
+  # lock_version column (rows go stale when a concurrent save bumps it).
+
   validates :title, presence: true, length: { minimum: 3, maximum: 255 }
   validates :body, presence: true, length: { minimum: 10 }
 

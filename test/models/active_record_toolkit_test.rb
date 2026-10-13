@@ -98,4 +98,20 @@ class ActiveRecordToolkitTest < ActiveSupport::TestCase
       Post.find_signed!("totally-invalid-signature")
     end
   end
+
+  # --- optimistic locking (row 71) ---------------------------------------------
+
+  test "stale concurrent update raises StaleObjectError" do
+    assert Post.locking_enabled?, "lock_version column must enable optimistic locking on Post"
+
+    winner = Post.find(@post.id)
+    loser = Post.find(@post.id)
+
+    winner.update!(title: "Lock Winner #{SecureRandom.hex(2)}")
+    assert_raises(ActiveRecord::StaleObjectError) { loser.update!(title: "Lock Loser") }
+
+    fresh = Post.find(@post.id)
+    assert_equal winner.lock_version, fresh.lock_version
+    assert_equal winner.title, fresh.title
+  end
 end
