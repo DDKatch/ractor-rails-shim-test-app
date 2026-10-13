@@ -4,9 +4,9 @@ Goal: verify every core Rails feature that **80%+ of production Rails apps** act
 uses, exercise it end-to-end, and record what works vs what breaks under the
 ractor-rails-shim on Ruby 4.0.6 / Rails 8.1.3.
 
-Last updated: 2026-10-13 (rows 107/108 + 113/116 worker-verified — job resilience, enqueue options, mail hooks, mailer callbacks; rows 45–47 re-verified against the real Solid Cache store in workers, TODO #27; rows 71/72/74/77/78/79 worker-verified; tally below)
+Last updated: 2026-10-13 (rows 107/108 + 113/116 worker-verified — job resilience, enqueue options, mail hooks, mailer callbacks; rows 45–47 re-verified against the real Solid Cache store in workers, TODO #27; rows 71/72/74/77/78/79/82/83 worker-verified; tally below)
 
-**Tally: ✅ 113/144 · 🔲 29 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
+**Tally: ✅ 114/144 · 🔲 28 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
 
 ## Feature matrix
 
@@ -104,7 +104,7 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | 79 |                       | `strict_loading`                    | ✅ Done | kino `/features/strict_loading_probe` in a worker: a `Post.strict_loading` record raises `ActiveRecord::StrictLoadingViolationError` on a lazy `comments` load, `includes`-preloaded associations stay readable, non-strict records keep lazy loading. Main-mode coverage in `association_toolkit_test` |
 | 80 |                       | Composite primary keys              | 🔲 To audit | |
 | 81 |                       | Multiple databases (`connects_to` / `connected_to`) | 🔲 To audit (low) | kino runs single PG |
-| 82 |                       | Postgres types (jsonb, arrays, ranges, uuid PK) | 🔲 To audit | |
+| 82 |                       | Postgres types (jsonb, arrays, ranges, uuid PK) | ✅ Done | Migration adds jsonb `metadata` (gin index) + string-array `trace_ids` to AuditLog. `audit_log_test` (main): jsonb round-trip + `@>` containment, array round-trip + `ANY()`. kino `/features/audit_archive_probe` in a worker: both queries run worker-side (plus the row-83 jsonb on AuditArchive). Ranges/uuid PK not exercised — single-PK kino |
 | 83 |                       | Advanced migrations (reversible, up/down, FKs, check constraints) | ✅ Done | `CreateAuditArchives` migration: `create_table` + `add_foreign_key` + named `add_check_constraint` + an explicit `reversible` block (table COMMENT with direction-specific SQL). `db:rollback STEP=1` reverts clean and re-migrates. `audit_archive_test` (main): FK rejects missing post (`InvalidForeignKey`), check constraint bites with `validate: false`, jsonb containment. kino `/features/audit_archive_probe` in a worker: same FK/jsonb/check exercise |
 | 84 |                       | Database tasks (`db:prepare` / `migrate` / `rollback`) | ✅ Done | bin/ci Setup step |
 | 85 |                       | Seeds (`db/seeds.rb`)               | ✅ Done | bin/ci Seeds step |
@@ -172,18 +172,18 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 
 | Status | Count | Features |
 |--------|-------|----------|
-| ✅ Done | 113 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 62 (batch processing in workers), 63+64 (aggregates + group/having/distinct in workers), 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–72 (polymorphic, STI, HABTM, nested attributes, counter cache, optimistic + pessimistic locking), 73 (dirty tracking in workers), 74 (normalizes in workers; shim's serialize-cast-value check is DelegateClass-safe in workers), 75 (signed_id round-trip in workers; shim 0.4.2 codec pre-warm), 76 (insert_all/upsert_all in workers), 77 (load_async in workers via per-Ractor executors), 78 (default_scope/unscoped in workers), 79 (strict_loading violation + includes readability in workers), 83 (advanced migrations: reversible + FK + check constraint, rollback/re-migrate; worker-side FK/jsonb/check exercise), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 107+108 (ActiveJob retry/discard declarations readable from workers + set(queue:, wait:) enqueue from workers via per-Ractor Concurrent executors), 113+116 (boot-registered interceptor + mailer after_action both run during worker-side delivery via the shim's hook-registry snapshot), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
-| — of which qualified ✅ | (10 of the 113) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
-| 🔲 To audit | 29 | See `TODO.md` for the check / implement / test plan per row |
+| ✅ Done | 114 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 62 (batch processing in workers), 63+64 (aggregates + group/having/distinct in workers), 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–72 (polymorphic, STI, HABTM, nested attributes, counter cache, optimistic + pessimistic locking), 73 (dirty tracking in workers), 74 (normalizes in workers; shim's serialize-cast-value check is DelegateClass-safe in workers), 75 (signed_id round-trip in workers; shim 0.4.2 codec pre-warm), 76 (insert_all/upsert_all in workers), 77 (load_async in workers via per-Ractor executors), 78 (default_scope/unscoped in workers), 79 (strict_loading violation + includes readability in workers), 82 (Postgres types: jsonb + string array on AuditLog, worker-side containment + ANY(); ranges/uuid PK not exercised), 83 (advanced migrations: reversible + FK + check constraint, rollback/re-migrate; worker-side FK/jsonb/check exercise), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 107+108 (ActiveJob retry/discard declarations readable from workers + set(queue:, wait:) enqueue from workers via per-Ractor Concurrent executors), 113+116 (boot-registered interceptor + mailer after_action both run during worker-side delivery via the shim's hook-registry snapshot), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
+| — of which qualified ✅ | (10 of the 114) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 82 (ranges/uuid PK not exercised), 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
+| 🔲 To audit | 28 | See `TODO.md` for the check / implement / test plan per row |
 | ⛔ Known limitations | 2 | #50 sanitize / simple_format (Nokogiri, permanent) · #90 `around_action` (SymbolicTransport doesn't replay `:around` filters — shim project or documented exclusion) |
 | ❌ Broken (worker) | 0 | none — the last ❌ (#98 `fields_with_errors`) was fixed by the validate-chain pass: worker-side `valid?` replays captured validator descriptors, invalid records no longer save in workers |
 
-Tally: 113 + 29 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-13 (job resilience 107 + enqueue options 108, mail hooks 113 + mailer callbacks 116, Solid Cache store in workers #27, optimistic 71 + pessimistic 72 locking, normalizes 74, load_async 77, default_scope 78, strict_loading 79, advanced migrations 83).
+Tally: 114 + 28 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-13 (job resilience 107 + enqueue options 108, mail hooks 113 + mailer callbacks 116, Solid Cache store in workers #27, optimistic 71 + pessimistic 72 locking, normalizes 74, load_async 77, default_scope 78, strict_loading 79, advanced migrations 83, Postgres types 82).
 
 ## Test Results (as of 2026-10-13)
 
 ```
-167 runs, 690 assertions, 0 failures, 0 errors, 0 skips
+169 runs, 697 assertions, 0 failures, 0 errors, 0 skips
 ```
 
 - **0 failures, 0 errors, 0 skips** — all feature-level tests pass, including the `:ractor` integration suite (no routes 555)

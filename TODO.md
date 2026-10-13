@@ -193,8 +193,13 @@ row, tick it here, note the evidence (test file / probe status).
     (`InvalidForeignKey`), check constraint bites with `validate: false`,
     jsonb containment. kino `/features/audit_archive_probe` in a worker:
     same FK/jsonb/check exercise.
-10. **[CHECK] Postgres types (row 82) — jsonb column + array column on
-    AuditLog; worker-side jsonb query.
+10. **[DONE ✅]** Postgres types (row 82) — migration adds jsonb
+    `metadata` (gin index) + string-array `trace_ids` to the polymorphic
+    AuditLog table. `audit_log_test` (main): jsonb round-trip + `@>`
+    containment, array round-trip + `ANY()`. kino
+    `/features/audit_archive_probe` in a worker: both queries run
+    worker-side (plus the row-83 jsonb on AuditArchive). Ranges/uuid PK
+    not exercised — single-PK kino (documented in the row note).
 11. **[CHECK] Composite PKs / multiple DBs (rows 80–81) — low; document
     "single-DB kino" if skipped.
 12. **[CHECK] Custom form builders / `fields_for` (row 97) — comment
