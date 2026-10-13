@@ -4,7 +4,7 @@ Goal: verify every core Rails feature that **80%+ of production Rails apps** act
 uses, exercise it end-to-end, and record what works vs what breaks under the
 ractor-rails-shim on Ruby 4.0.6 / Rails 8.1.3.
 
-Last updated: 2026-10-13 (rows 107/108 + 113/116 worker-verified — job resilience, enqueue options, mail hooks, mailer callbacks; tally below)
+Last updated: 2026-10-13 (rows 107/108 + 113/116 worker-verified — job resilience, enqueue options, mail hooks, mailer callbacks; rows 45–47 re-verified against the real Solid Cache store in workers, TODO #27; tally below)
 
 **Tally: ✅ 106/144 · 🔲 36 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
 
@@ -56,9 +56,9 @@ Last updated: 2026-10-13 (rows 107/108 + 113/116 worker-verified — job resilie
 | 42 | **I18n**              | Translations (t / l / localize)     | ✅ Done | config/locales/en.yml with full translations |
 | 43 |                       | Pluralization                       | ✅ Done | en.messages.count defined |
 | 44 |                       | Locale switching                    | ✅ Done | Locale available in I18n config |
-| 45  | **Caching**           | Fragment caching                    | ✅ Done | `posts/index` (outer key: page + `Post.maximum(:updated_at)`) + `posts/show` body; test env uses `:memory_store` + `perform_caching = true` |
+| 45  | **Caching**           | Fragment caching                    | ✅ Done | `posts/index` (outer key: page + `Post.maximum(:updated_at)`) + `posts/show` body; test env uses `:memory_store` + `perform_caching = true`; the kino now runs the real `:solid_cache_store` (TODO #27) |
 | 46  |                       | Russian doll caching                | ✅ Done | Inner `cache post` / `cache comment` fragments nested in the outer ones; comment fragments survive a post bust while busted outer fragments re-render (asserted via cache instrumentation events) |
-| 47  |                       | Low-level caching (Rails.cache)     | ✅ Done | `Rails.cache.fetch("posts/index/total_count", expires_in: 1.minute)` in `PostsController#index` — works in worker Ractors too (see shim fixes below) |
+| 47  |                       | Low-level caching (Rails.cache)     | ✅ Done | `Rails.cache.fetch("posts/index/total_count", expires_in: 1.minute)` in `PostsController#index` — works in worker Ractors too (see shim fixes below); kino `/solid_cache_probe`: worker-side miss+hit persists and reads back a `solid_cache_entries` row (TODO #27) |
 | 48  |                       | Sweepers / cache invalidation       | ✅ Done (replacement) | Rails 8 removed `ActionController::Sweeper`; invalidation is touch-based — `Comment belongs_to :post, touch: true` bumps `post.updated_at`, part of the post cache_key and the index fragment key (asserted) |
 | 49 | **Security**          | CSRF protection                     | ✅ Done | Ractor test verifies token |
 | 50 |                       | XSS sanitization (sanitize / simple_format) | ⛔ Unsupported | Nokogiri-backed `sanitize`/`simple_format` are **unusable in worker Ractors** (ractor-unsafe C method — see shim `COMPATIBILITY.md`); must be avoided in worker-rendered views. App works around it: `posts/show` renders `@post.body` escaped via ERB + `whitespace-pre-wrap` (XSS-safe, no Nokogiri in workers) — see "Living without Nokogiri (#50)" below for the full pattern + advice. |
@@ -178,12 +178,12 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | ⛔ Known limitations | 2 | #50 sanitize / simple_format (Nokogiri, permanent) · #90 `around_action` (SymbolicTransport doesn't replay `:around` filters — shim project or documented exclusion) |
 | ❌ Broken (worker) | 0 | none — the last ❌ (#98 `fields_with_errors`) was fixed by the validate-chain pass: worker-side `valid?` replays captured validator descriptors, invalid records no longer save in workers |
 
-Tally: 106 + 36 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-13 (job resilience 107 + enqueue options 108, mail hooks 113 + mailer callbacks 116).
+Tally: 106 + 36 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-13 (job resilience 107 + enqueue options 108, mail hooks 113 + mailer callbacks 116, Solid Cache store in workers #27).
 
 ## Test Results (as of 2026-10-13)
 
 ```
-157 runs, 627 assertions, 0 failures, 0 errors, 0 skips
+157 runs, 632 assertions, 0 failures, 0 errors, 0 skips
 ```
 
 - **0 failures, 0 errors, 0 skips** — all feature-level tests pass, including the `:ractor` integration suite (no routes 555)
@@ -195,7 +195,16 @@ As of the last full run (`bin/rails test` → 154 runs, 538 assertions, 0 failur
 
 The one residual worker-Ractor limitation is **HTML sanitization**: the `sanitize` / `simple_format` helpers are backed by Nokogiri, whose document parser is a **ractor-unsafe C method** (Ruby only permits it in the main Ractor). This is unfixable in the shim — full write-up in the shim's `COMPATIBILITY.md` (`actionview — sanitize / simple_format`). This app sidesteps it: user content is rendered escaped via ERB (XSS-safe) with `whitespace-pre-wrap`, so no Nokogiri call runs in workers.
 
-Caveat on the caching claims: the `:ractor` kino runs `perform_caching = true` with **no cache store configured and no `solid_cache` gem bundled**, so the production store is `:null_store` — the kino caching probes exercise the no-op path. The caching verifications (rows 45–48) are real in the test suite (`:memory_store`); TODO.md P1 item 26 adds Solid Cache to re-verify against a real store in kino.
+Caveat on the caching claims (RESOLVED 2026-10-13, TODO #27): the `:ractor`
+kino runs `perform_caching = true` with the **real production store** —
+`:solid_cache_store` (DB-backed via `config/cache.yml`). `GET /posts`
+exercises fragment + low-level caching through Solid Cache, and the kino's
+`GET /solid_cache_probe` proves the worker round-trip end-to-end:
+`Rails.cache.fetch` miss+hit inside a worker Ractor persists a
+`solid_cache_entries` row (entries_delta ≥ 1) and the hit returns the cached
+value. Worker-side Solid Cache required the shim's connects_to pool fallback
+(SolidCache::Record carries its own `default_shard` from cache.yml) and the
+per-Ractor `Entry.select_sql` memo patch.
 
 **What WORKS in :ractor mode:**
 - `GET /posts/new` (unauth) → 302 redirect (Devise before_action replay)

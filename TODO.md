@@ -135,13 +135,17 @@ row, tick it here, note the evidence (test file / probe status).
     `:all => :inbox`; `InboxMailbox` records a polymorphic AuditLog;
     `test/mailboxes/inbox_mailbox_test.rb` uses
     `receive_inbound_email_from_mail` (the create_ variant does NOT route).
-27. **[IMPLEMENT] Real production cache store (rows 45–47 caveat) —
-    `production.rb` sets `perform_caching = true` but configures no
-    `cache_store`, and no `solid_cache` gem is bundled → the store defaults
-    to `:null_store`, so the `:ractor` kino caching probes exercise the
-    no-op path (they don't fail, but they don't cache either). Add
-    `solid_cache` (the Rails 8 default stack, DB-backed → fits the PG
-    setup) and re-verify fragment/russian-doll/low-level caching in kino.
+27. **[DONE ✅]** Real production cache store (rows 45–47 caveat) —
+    `solid_cache` was already adopted (Gemfile, migration,
+    `config/cache.yml` with `database: primary`, `production.rb` →
+    `:solid_cache_store`); what was missing was worker verification. Kino
+    `/solid_cache_probe`: `Rails.cache.fetch` miss+hit inside a worker
+    Ractor persists a `solid_cache_entries` row (entries_delta ≥ 1) and the
+    hit returns the cached value — the real store, not `:null_store`.
+    Required two shim fixes: connects_to pool fallback in
+    `init_worker_ar_connections!`/`connection_pool` (SolidCache::Record
+    carries `default_shard == :primary` from cache.yml) and the per-Ractor
+    `Entry.select_sql` memo patch.
 
 ## P2 — toolkit depth
 
