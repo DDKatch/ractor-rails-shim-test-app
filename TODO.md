@@ -161,8 +161,7 @@ row, tick it here, note the evidence (test file / probe status).
     `with_lock` transaction updates the row) and in a worker via kino
     `/features/pessimistic_lock_probe` (dedicated probe row, update inside
     the held lock, cleanup, plus the same FOR UPDATE SQL check).
-3. **[CHECK] `normalizes` (row 74) — `normalizes :email, with: ->(v) { v.strip.downcase }`
-    on User (norm Procs must be shareable — same class as scope lambdas).
+3. **[DONE ✅]** `normalizes` (row 74) — `User normalizes :email, with:\n    ->(v) { v.strip.downcase }`. Verified in main (`user_test`:\n    `normalize_value_for` + instance assignment) and in a worker via kino\n    `/features/normalizes_probe` (normalizer Proc inside the attribute's\n    `NormalizedValueType` is callable cross-Ractor). Required a shim fix:\n    `SerializeCastValue::ClassMethods#serialize_cast_value_compatible?` now\n    falls back to a `method_defined?(sym, false)` ancestor scan in workers,\n    because DelegateClass-built type classes carry main-Ractor Proc-body\n    delegators and Ruby 4 refuses `instance_method`/`instance_methods` on\n    them from a worker ("defined with an un-shareable Proc in a different\n    Ractor").
 4. **[DONE ✅]** STI or delegated types (row 67) — smallest: `Comment::Admin`? Prefer
     a `Vehicle/Car`-style demo on a throwaway model.
 5. **[DONE ✅]** HABTM / `has_one :through` (row 68) — tiny join-table model.
