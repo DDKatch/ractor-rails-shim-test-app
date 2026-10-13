@@ -10,7 +10,7 @@ gem "ractor-rails-shim", github: "DDKatch/ractor-rails-shim", branch: "main"
 # RAILS_FEATURES.md #144: minimal isolated engine (path gem), mounted at
 # /audit_engine in config/routes.rb.
 gem "audit_engine", path: "engines/audit_engine"
-gem "rails", "~> 8.1.3"
+gem "rails", "~> 8.1.4"
 gem "propshaft"
 gem "tailwindcss-rails"
 gem "pg", "~> 1.7"
