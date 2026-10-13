@@ -166,11 +166,20 @@ row, tick it here, note the evidence (test file / probe status).
     a `Vehicle/Car`-style demo on a throwaway model.
 5. **[DONE ✅]** HABTM / `has_one :through` (row 68) — tiny join-table model.
 6. **[CHECK] `default_scope` / `unscoped` (row 78) — on Category.
-7. **[CHECK] `strict_loading` (row 79) — flip on a probe action, assert
-    N+1 raises.
-8. **[CHECK] `load_async` (row 77) — `Post.load_async` in a worker
-    (futures + thread pool — the same Thread-in-Ractor class as the async
-    job adapter).
+7. **[DONE ✅]** `strict_loading` (row 79) — kino
+    `/features/strict_loading_probe` in a worker: a `Post.strict_loading`
+    record raises `ActiveRecord::StrictLoadingViolationError` on a lazy
+    `comments` load; `includes`-preloaded associations stay readable;
+    non-strict records keep lazy loading. Main-mode coverage in
+    `association_toolkit_test`. (NB: `.user` was a bad probe target —
+    belongs_to with a nil FK returns nil without a load attempt.)
+8. **[DONE ✅]** `load_async` (row 77) — kino `/features/load_async_probe`
+    in a worker: `Post.order(:id).load_async` rides the per-Ractor
+    executor (Concurrent futures — same Thread-in-Ractor class as the
+    async job adapter) and materializes the committed rows; `rel.loaded?`
+    true after `to_a`. Main-mode coverage in `association_toolkit_test`
+    (commits for real: the async executor's separate connection cannot
+    see transactional-test rows).
 9. **[IMPLEMENT] Advanced migrations (row 83) — one migration exercising
     `reversible` + FK + check constraint; `db:rollback` then re-migrate.
 10. **[CHECK] Postgres types (row 82) — jsonb column + array column on
