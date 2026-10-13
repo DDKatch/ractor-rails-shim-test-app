@@ -405,6 +405,44 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md rows 83 + 82: advanced migrations + Postgres jsonb.
+  # From a worker Ractor: create an archive against an existing post (FK),
+  # find it via a jsonb containment query, and prove the check constraint
+  # bites when validations are bypassed. Cleaned up after.
+  def audit_archive_probe
+    post = Post.order(:id).first
+    return head(:not_found) unless post
+
+    stamp = SecureRandom.hex(2)
+    archive = AuditArchive.create!(
+      label: "audit probe #{stamp}",
+      post: post,
+      payload: { "tag" => stamp, "n" => 1 }
+    )
+
+    found = AuditArchive.where("payload @> ?", { tag: stamp }.to_json)
+    found_count = found.count
+
+    check_violation = false
+    begin
+      bad = AuditArchive.new(label: "", post: post)
+      bad.save(validate: false)
+    rescue ActiveRecord::StatementInvalid => e
+      check_violation = e.message.include?("audit_archives_label_check")
+    end
+
+    archive.destroy!
+
+    render json: {
+      created: archive.id.present?,
+      jsonb_found_count: found_count,
+      jsonb_query_ok: found_count == 1,
+      check_violation: check_violation
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }

@@ -530,6 +530,10 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # the relation materializes from a worker Ractor.
   lap_status, lap_headers, lap_body = dispatch(app, "GET", "/features/load_async_probe", nil, nil)
 
+  # Audit-archive probe (rows 83 + 82): FK + check constraint + jsonb
+  # containment from a worker Ractor.
+  aap_status, aap_headers, aap_body = dispatch(app, "GET", "/features/audit_archive_probe", nil, nil)
+
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
   # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
   # patched) — must return 200 {enqueued: true}.
@@ -667,6 +671,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/default_scope_probe" => [dsp_status, dsp_headers, dsp_body],
     "GET /features/strict_loading_probe" => [slp_status, slp_headers, slp_body],
     "GET /features/load_async_probe" => [lap_status, lap_headers, lap_body],
+    "GET /features/audit_archive_probe" => [aap_status, aap_headers, aap_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
@@ -1088,6 +1093,25 @@ else
                    "load_async must materialize committed rows in a worker (row 77)"
       assert lap_parsed["loaded"],
                    "the load_async relation must report itself loaded after to_a (row 77)"
+
+      # --- Rows 83 + 82: advanced migrations (FK + check constraint) and
+      # --- jsonb queries in a worker ---
+      # GET /audit_archive_probe: the audit_archives table comes from the
+      # row-83 migration (reversible + FK + check constraint); the probe
+      # exercises the FK, a jsonb containment query, and the check
+      # constraint inside a worker.
+      aap_key = "GET /features/audit_archive_probe"
+      aap_status = results[aap_key][0]
+      aap_body = results[aap_key][2]
+      assert_equal 200, aap_status,
+                   "GET /audit_archive_probe must return 200 in a worker Ractor (got #{aap_status}: #{aap_body[0..200]})"
+      aap_parsed = JSON.parse(aap_body)
+      assert aap_parsed["created"],
+                   "the audit_archives FK-backed insert must work in a worker (row 83)"
+      assert aap_parsed["jsonb_query_ok"],
+                   "a jsonb containment query must find the archive in a worker (row 82)"
+      assert aap_parsed["check_violation"],
+                   "the audit_archives_label_check constraint must reject an empty label in a worker (row 83)"
 
       # --- TODO #5: ActiveJob enqueue in a worker Ractor (FIXED in shim) ---
       # GET /job_enqueue_probe runs `WelcomeJob.perform_later(user)` inside a

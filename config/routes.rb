@@ -47,6 +47,7 @@ get "/assoc_probe", to: "stats#assoc_probe"
     get "/default_scope_probe", to: "features#default_scope_probe"
     get "/strict_loading_probe", to: "features#strict_loading_probe"
     get "/load_async_probe", to: "features#load_async_probe"
+    get "/audit_archive_probe", to: "features#audit_archive_probe"
     get "/current", to: "features#current_attrs"
     get "/rich_text", to: "features#rich_text"
   end
