@@ -64,11 +64,18 @@ row, tick it here, note the evidence (test file / probe status).
 7. **[DONE ✅]** Counter cache in workers (row 70) — explicit assert: create a
    comment from a worker probe, `post.comments_count` incremented (the SQL
    `UPDATE posts SET comments_count...` runs on the worker's connection).
-8. **[CHECK] `signed_id` explicitly (row 75) — `Post.first.signed_id` +
-   `Post.find_signed` round-trip in a worker probe (signing uses
-   MessageVerifier — implied ✅ via Devise, make it explicit).
-9. **[CHECK] `insert_all` / `upsert_all` (row 76) — bulk-create tags in a
-   worker probe.
+8. **[DONE ✅]** `signed_id` explicitly (row 75) — kino
+   `/features/signed_id_probe`: worker-side `signed_id(expires_in:)` →
+   `find_signed` round-trip, garbage signature → `nil` / `InvalidSignature` for
+   `find_signed!`. Exercising it surfaced a real shim gap (fixed in shim
+   0.4.2): the lazily-built `active_record/signed_id` verifier codec could not
+   be built by workers (NoOpProc'd rotation/secret generator on the frozen
+   graph), so main pre-warms it during `prepare_for_ractors!`.
+9. **[DONE ✅]** `insert_all` / `upsert_all` (row 76) — kino
+   `/features/bulk_probe`: `insert_all!` of 3 tags, `upsert_all(unique_by:
+   :name)` updates instead of duplicating, duplicate bulk INSERT raises
+   `RecordNotUnique` (run inside a savepoint so the aborted statement does not
+   poison an enclosing transaction). No shim changes needed.
 10. **[DONE ✅]** Nested attributes (row 69) — accept
    `comments_attributes` on Post in the create flow + form; probe in worker.
 11. **[DONE ✅]** Polymorphic association (row 66) — `AuditLog` with

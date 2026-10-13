@@ -4,9 +4,9 @@ Goal: verify every core Rails feature that **80%+ of production Rails apps** act
 uses, exercise it end-to-end, and record what works vs what breaks under the
 ractor-rails-shim on Ruby 4.0.6 / Rails 8.1.3.
 
-Last updated: 2026-10-06 (validate-chain pass: rows 1 (worker) + 98 worker-verified — validator-descriptor replay + fields_with_errors wrapper; tally below)
+Last updated: 2026-10-13 (rows 75 + 76 worker-verified — signed_id codec pre-warm + bulk-write probe; shim 0.4.2; tally below)
 
-**Tally: ✅ 100/144 · 🔲 42 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
+**Tally: ✅ 102/144 · 🔲 40 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
 
 ## Feature matrix
 
@@ -97,8 +97,8 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | 72 |                       | Pessimistic locking (`with_lock`)   | 🔲 To audit | |
 | 73 |                       | Dirty tracking (`changed?`, `changes`, `saved_changes`) | ✅ Done | comment_test (new/changed/saved lifecycle: `changed?`, `changes` pair, `title_was`, post-save `saved_changes`) + kino `/features/dirty_probe` in a worker: identical values through mutation → save (instance-level state, no shim changes needed) |
 | 74 |                       | `normalizes` (Rails 7.1)            | 🔲 To audit | |
-| 75 |                       | `signed_id` / `find_signed` / `token_for` | ✅ Done (implicit) | ActiveStorage blob URLs are signed ids; direct-upload flow asserted |
-| 76 |                       | `insert_all` / `upsert_all`         | 🔲 To audit | |
+| 75 |                       | `signed_id` / `find_signed` / `token_for` | ✅ Done | kino `/features/signed_id_probe` in a worker: `signed_id(expires_in:)` → `find_signed` round-trip, garbage signature → `nil` for `find_signed` and `InvalidSignature` raised for `find_signed!` (was implicit via ActiveStorage; now explicit). Required the shim 0.4.2 fix: main pre-warms the lazily-built `active_record/signed_id` verifier codec so workers hit the frozen `@codecs` cache (its rotation/secret-generator Procs are NoOpProcs post-freeze), plus a fully-qualified `SERIALIZERS` lookup, shareable stdlib-JSON default-option ivars, and a digest-length memo patch |
+| 76 |                       | `insert_all` / `upsert_all`         | ✅ Done | kino `/features/bulk_probe` in a worker: `insert_all!` of 3 tags, `upsert_all(unique_by: :name)` updates instead of duplicating, duplicate bulk INSERT raises `RecordNotUnique` (run inside a savepoint so a transactional caller is not poisoned). No shim changes needed |
 | 77 |                       | Async queries (`load_async`)        | 🔲 To audit | |
 | 78 |                       | `default_scope` / `unscoped`        | 🔲 To audit | |
 | 79 |                       | `strict_loading`                    | 🔲 To audit | |
@@ -172,18 +172,18 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 
 | Status | Count | Features |
 |--------|-------|----------|
-| ✅ Done | 100 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 62 (batch processing in workers), 63+64 (aggregates + group/having/distinct in workers), 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–70 (polymorphic, STI, HABTM, nested attributes, counter cache), 73 (dirty tracking in workers), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
-| — of which qualified ✅ | (11 of the 100) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 75, 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
-| 🔲 To audit | 42 | See `TODO.md` for the check / implement / test plan per row |
+| ✅ Done | 102 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 62 (batch processing in workers), 63+64 (aggregates + group/having/distinct in workers), 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–70 (polymorphic, STI, HABTM, nested attributes, counter cache), 73 (dirty tracking in workers), 75 (signed_id round-trip in workers; shim 0.4.2 codec pre-warm), 76 (insert_all/upsert_all in workers), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
+| — of which qualified ✅ | (10 of the 102) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
+| 🔲 To audit | 40 | See `TODO.md` for the check / implement / test plan per row |
 | ⛔ Known limitations | 2 | #50 sanitize / simple_format (Nokogiri, permanent) · #90 `around_action` (SymbolicTransport doesn't replay `:around` filters — shim project or documented exclusion) |
 | ❌ Broken (worker) | 0 | none — the last ❌ (#98 `fields_with_errors`) was fixed by the validate-chain pass: worker-side `valid?` replays captured validator descriptors, invalid records no longer save in workers |
 
-Tally: 100 + 42 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-06 (enum 65, dirty 73, batch 62, aggregates 63 + grouping 64).
+Tally: 102 + 40 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-13 (signed_id 75 + bulk writes 76).
 
-## Test Results (as of 2026-10-06)
+## Test Results (as of 2026-10-13)
 
 ```
-157 runs, 606 assertions, 0 failures, 0 errors, 0 skips
+157 runs, 615 assertions, 0 failures, 0 errors, 0 skips
 ```
 
 - **0 failures, 0 errors, 0 skips** — all feature-level tests pass, including the `:ractor` integration suite (no routes 555)
