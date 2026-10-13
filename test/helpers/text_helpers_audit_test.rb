@@ -1,8 +1,9 @@
 require "test_helper"
 
-# Text helpers audit (RAILS_FEATURES.md row 100): pure-Ruby
-# ActionView::Helpers::TextHelper methods (no Nokogiri involvement —
-# highlight/excerpt/truncate/pluralize are string-level).
+# Text helpers audit (RAILS_FEATURES.md row 100): truncate/pluralize/
+# highlight/excerpt are string-level in main mode. NB: highlight DOES run
+# sanitize by default (Nokogiri) — the worker-side kino probe passes
+# sanitize: false because sanitize is ⛔ in workers (row 120).
 class TextHelpersAuditTest < ActiveSupport::TestCase
   include ActionView::Helpers::TextHelper
 

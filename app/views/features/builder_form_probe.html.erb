@@ -1,0 +1,12 @@
+<%# RAILS_FEATURES.md #97: custom form builder + fields_for. The form uses
+    LabeledFormBuilder (its labeled_text_field renders the labeled-field
+    wrapper), and fields_for on the Post comments association generates the
+    nested-attribute names post[comments_attributes][0][body]. %>
+<%= form_with model: @post, url: "/features/form_echo", builder: LabeledFormBuilder do |f| %>
+  <%= f.labeled_text_field :title %>
+  <%= f.fields_for :comments, @post.comments.build do |cf| %>
+    <%= cf.label :body %>
+    <%= cf.text_area :body %>
+  <% end %>
+  <%= f.submit "Echo" %>
+<% end %>

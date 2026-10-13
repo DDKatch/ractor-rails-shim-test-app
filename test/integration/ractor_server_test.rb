@@ -534,6 +534,14 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # containment from a worker Ractor.
   aap_status, aap_headers, aap_body = dispatch(app, "GET", "/features/audit_archive_probe", nil, nil)
 
+  # Builder-form probe (row 97): custom LabeledFormBuilder markup + nested
+  # fields_for names, rendered from a worker Ractor.
+  bbp_status, bbp_headers, bbp_body = dispatch(app, "GET", "/features/builder_form_probe", nil, nil)
+
+  # Text-helpers probe (row 100): truncate/pluralize/highlight/excerpt from
+  # a worker Ractor.
+  thp_status, thp_headers, thp_body = dispatch(app, "GET", "/features/text_helpers_probe", nil, nil)
+
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
   # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
   # patched) — must return 200 {enqueued: true}.
@@ -672,6 +680,8 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/strict_loading_probe" => [slp_status, slp_headers, slp_body],
     "GET /features/load_async_probe" => [lap_status, lap_headers, lap_body],
     "GET /features/audit_archive_probe" => [aap_status, aap_headers, aap_body],
+    "GET /features/builder_form_probe" => [bbp_status, bbp_headers, bbp_body],
+    "GET /features/text_helpers_probe" => [thp_status, thp_headers, thp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
@@ -1112,6 +1122,33 @@ else
                    "a jsonb containment query must find the archive in a worker (row 82)"
       assert aap_parsed["check_violation"],
                    "the audit_archives_label_check constraint must reject an empty label in a worker (row 83)"
+
+      # --- Row 97: custom form builder + fields_for in a worker ---
+      # GET /builder_form_probe renders through LabeledFormBuilder and a
+      # fields_for block on the comments association.
+      bbp_key = "GET /features/builder_form_probe"
+      bbp_status = results[bbp_key][0]
+      bbp_body = results[bbp_key][2]
+      assert_equal 200, bbp_status,
+                   "GET /builder_form_probe must return 200 in a worker Ractor (got #{bbp_status}: #{bbp_body[0..200]})"
+      bbp_parsed = JSON.parse(bbp_body)
+      assert bbp_parsed["custom_builder_ok"],
+                   "the custom form builder must render its wrapper markup in a worker (row 97)"
+      assert bbp_parsed["fields_for_ok"],
+                   "fields_for must emit nested-attribute field names in a worker (row 97)"
+
+      # --- Row 100: text helpers in a worker ---
+      # GET /text_helpers_probe runs truncate/pluralize/highlight/excerpt.
+      thp_key = "GET /features/text_helpers_probe"
+      thp_status = results[thp_key][0]
+      thp_body = results[thp_key][2]
+      assert_equal 200, thp_status,
+                   "GET /text_helpers_probe must return 200 in a worker Ractor (got #{thp_status}: #{thp_body[0..200]})"
+      thp_parsed = JSON.parse(thp_body)
+      assert thp_parsed["truncate_ok"], "truncate must work in a worker (row 100)"
+      assert thp_parsed["pluralize_ok"], "pluralize must work in a worker (row 100)"
+      assert thp_parsed["highlight_ok"], "highlight must work in a worker (row 100)"
+      assert thp_parsed["excerpt_ok"], "excerpt must work in a worker (row 100)"
       assert aap_parsed["log_jsonb_ok"],
                    "AuditLog jsonb containment must work in a worker (row 82)"
       assert aap_parsed["log_array_ok"],

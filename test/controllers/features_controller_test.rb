@@ -73,4 +73,27 @@ class FeaturesControllerTest < ActionDispatch::IntegrationTest
     assert_not_nil body["request_id"], "Current.request_id was not set by the before_action"
     assert_equal response.headers["X-Request-Id"], body["request_id"]
   end
+
+  # --- custom form builder + fields_for (row 97) --------------------------
+
+  test "builder form probe renders custom builder markup and nested fields" do
+    get "/features/builder_form_probe"
+    assert_response :success
+    body = JSON.parse(response.body)
+
+    assert body["custom_builder_ok"], "LabeledFormBuilder must render its labeled-field wrapper (row 97)"
+    assert body["fields_for_ok"], "fields_for on the comments association must emit nested-attribute names (row 97)"
+  end
+
+  # --- text helpers (row 100) ----------------------------------------------
+
+  test "text helpers probe reports all four helpers working" do
+    get "/features/text_helpers_probe"
+    assert_response :success
+    body = JSON.parse(response.body)
+
+    %w[truncate_ok pluralize_ok highlight_ok excerpt_ok].each do |flag|
+      assert body[flag], "text helper flag #{flag} must be true (row 100)"
+    end
+  end
 end

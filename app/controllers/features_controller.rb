@@ -3,6 +3,11 @@
 # auth. Each action is dispatched by test/integration/ractor_server_test.rb
 # in :ractor mode as well.
 class FeaturesController < ApplicationController
+  # RAILS_FEATURES.md #100: text helpers. Included at boot (main-Ractor
+  # class definition) — `include` from a worker would mutate a shared
+  # class and raise Ractor::UnsafeError.
+  include ActionView::Helpers::TextHelper
+
   # RAILS_FEATURES.md #92: HTTP basic auth.
   http_basic_authenticate_with name: "audit", password: "secret", only: :basic_auth
 
@@ -448,6 +453,48 @@ class FeaturesController < ApplicationController
       check_violation: check_violation,
       log_jsonb_ok: log_jsonb_count == 1,
       log_array_ok: log_array_count == 1
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
+  # RAILS_FEATURES.md #97: custom form builder + fields_for. Renders a
+  # form via LabeledFormBuilder (custom labeled-field markup) with a
+  # fields_for block on the Post comments association (nested-attribute
+  # naming). Returns JSON verdicts about the generated HTML.
+  def builder_form_probe
+    @post = Post.new
+    html = render_to_string(layout: false)
+
+    render json: {
+      custom_builder_ok: html.include?("labeled-field") && html.include?("post_title"),
+      fields_for_ok: html.include?("post[comments_attributes][0][body]"),
+      html_length: html.length
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
+  # RAILS_FEATURES.md #100: text helpers from a worker Ractor. Pure-Ruby
+  # ActionView::Helpers::TextHelper — the same call shape the worker-side
+  # view rendering already uses (posts index/cards use truncate +
+  # pluralize); highlight and excerpt added here for deterministic
+  # assertions.
+  def text_helpers_probe
+    fmt = ->(e) { "ERR:#{e.class}: #{e.message[0, 80]}" }
+    tr = (truncate("hello world", length: 5) rescue fmt.call($!))
+    pl = (pluralize(2, "comment") rescue fmt.call($!))
+    # highlight sanitizes by default (Nokogiri — row 120 ⛔ in workers), so
+    # opt out here; the HTML-wrapping itself is a plain gsub.
+    hl = (highlight("a b c", "b", sanitize: false) rescue fmt.call($!))
+    ex = (excerpt("a b c", "b") rescue fmt.call($!))
+
+    render json: {
+      truncate_ok: tr == "he...",
+      pluralize_ok: pl == "2 comments",
+      highlight_ok: hl.include?("<mark>"),
+      excerpt_ok: ex == "a b c",
+      tr: tr, pl: pl, hl: hl, ex: ex
     }
   rescue => e
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
