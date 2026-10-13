@@ -433,11 +433,21 @@ class FeaturesController < ApplicationController
 
     archive.destroy!
 
+    # Row 82: Postgres types on AuditLog — jsonb containment + array ANY().
+    log = AuditLog.create!(action: "audit probe",
+                           metadata: { "tag" => stamp },
+                           trace_ids: [ "abc", stamp ])
+    log_jsonb_count = AuditLog.where("metadata @> ?", { tag: stamp }.to_json).count
+    log_array_count = AuditLog.where("? = ANY(trace_ids)", stamp).count
+    log.destroy!
+
     render json: {
       created: archive.id.present?,
       jsonb_found_count: found_count,
       jsonb_query_ok: found_count == 1,
-      check_violation: check_violation
+      check_violation: check_violation,
+      log_jsonb_ok: log_jsonb_count == 1,
+      log_array_ok: log_array_count == 1
     }
   rescue => e
     render json: { error: "#{e.class}: #{e.message}" }, status: 500

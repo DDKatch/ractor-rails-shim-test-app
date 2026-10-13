@@ -1112,6 +1112,10 @@ else
                    "a jsonb containment query must find the archive in a worker (row 82)"
       assert aap_parsed["check_violation"],
                    "the audit_archives_label_check constraint must reject an empty label in a worker (row 83)"
+      assert aap_parsed["log_jsonb_ok"],
+                   "AuditLog jsonb containment must work in a worker (row 82)"
+      assert aap_parsed["log_array_ok"],
+                   "AuditLog string-array ANY() query must work in a worker (row 82)"
 
       # --- TODO #5: ActiveJob enqueue in a worker Ractor (FIXED in shim) ---
       # GET /job_enqueue_probe runs `WelcomeJob.perform_later(user)` inside a
