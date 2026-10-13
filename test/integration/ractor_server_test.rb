@@ -516,6 +516,10 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # solid_cable_messages. Must return 200 {persisted: true, msg: ...}.
   cbp_status, cbp_headers, cbp_body = dispatch(app, "GET", "/cable_probe", nil, nil)
 
+  # Solid Cache probe (TODO #27): worker-side Rails.cache.fetch miss+hit
+  # against the REAL production store (:solid_cache_store, DB-backed).
+  scp_status, scp_headers, scp_body = dispatch(app, "GET", "/solid_cache_probe", nil, nil)
+
   # Associations toolkit probe (RAILS_FEATURES.md #66-70): nested attributes
   # create, polymorphic AuditLog, STI (Car < Vehicle), HABTM insert and the
   # counter cache — all inside a worker Ractor.
@@ -635,6 +639,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/job_resilience_probe" => [jrp_status, jrp_headers, jrp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
+    "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
     "GET /assoc_probe" => [asp_status, asp_headers, asp_body],
     "GET /up" => [up_status, up_headers, up_body],
     "GET /features/head" => [fh_status, fh_headers, fh_body],
@@ -988,6 +993,25 @@ else
       assert_equal "worker broadcast", cbp_parsed["msg"]
       assert_equal cbp_parsed["rows_before"] + 1, cbp_parsed["rows_after"],
                    "the worker broadcast must add exactly one solid_cable_messages row"
+
+      # --- TODO #27: the REAL production cache store from a worker ---------
+      # GET /solid_cache_probe runs Rails.cache.fetch miss+hit in a worker
+      # against the :solid_cache_store (DB-backed). The miss must INSERT a
+      # solid_cache_entries row and the hit must return the cached value.
+      scp_key = "GET /solid_cache_probe"
+      scp_status = results[scp_key][0]
+      scp_body = results[scp_key][2]
+      assert_equal 200, scp_status,
+                   "GET /solid_cache_probe must return 200 in a worker Ractor (got #{scp_status}: #{scp_body[0..300]})"
+      scp_parsed = JSON.parse(scp_body)
+      assert_equal "SolidCache::Store", scp_parsed["store_class"],
+                   "the production cache store must be SolidCacheStore (got #{scp_parsed['store_class']})"
+      assert scp_parsed["cached_value"].is_a?(String) && scp_parsed["cached_value"].length.positive?,
+                   "GET /solid_cache_probe must report a cached value (got #{scp_body[0..200]})"
+      assert scp_parsed["fetch_hit_returns_cached"],
+                   "the second fetch must HIT (return the cached value, not re-run the block)"
+      assert scp_parsed["entries_delta"].is_a?(Integer) && scp_parsed["entries_delta"].positive?,
+                   "the worker-side cache miss must persist a solid_cache_entries row (delta #{scp_parsed['entries_delta']})"
 
       # --- TODO #22: Associations battery in a worker Ractor (rows 66-70) --
       # GET /assoc_probe runs in one worker: nested-attributes create

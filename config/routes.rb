@@ -21,6 +21,7 @@ Rails.application.routes.draw do
   get "/mail_hooks_probe", to: "stats#mail_hooks_probe"
   get "/job_enqueue_probe", to: "stats#job_enqueue_probe"
   get "/cable_probe", to: "stats#cable_probe"
+  get "/solid_cache_probe", to: "stats#solid_cache_probe"
 get "/assoc_probe", to: "stats#assoc_probe"
   get "/downloads/posts_csv", to: "downloads#posts_csv", as: :posts_csv_download
   get "/downloads/report", to: "downloads#report", as: :report_download

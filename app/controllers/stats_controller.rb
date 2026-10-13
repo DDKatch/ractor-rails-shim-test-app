@@ -216,6 +216,32 @@ class StatsController < ApplicationController
     }, status: 500
   end
 
+  # Probe for the REAL production cache store in a worker Ractor (TODO #27):
+  # the kino runs production semantics with :solid_cache_store (DB-backed),
+  # so a worker-side Rails.cache.fetch MISS+HIT must land in (and be served
+  # from) the solid_cache_entries table — not the :null_store no-op path the
+  # kino used to exercise. Returns the store class, the cached value, the
+  # hit/miss behavior, and the entries-table delta as persistence evidence.
+  def solid_cache_probe
+    before = SolidCache::Entry.count
+    key = "solid_cache_probe/#{Time.current.to_i}"
+    value = Rails.cache.fetch(key, expires_in: 1.minute) { "worker-cached-#{rand(10_000)}" }
+    hit = Rails.cache.fetch(key, expires_in: 1.minute) { "should-not-rerun" }
+    after = SolidCache::Entry.count
+
+    render json: {
+      store_class: Rails.cache.class.name,
+      cached_value: value,
+      fetch_hit_returns_cached: hit == value,
+      entries_delta: after - before
+    }
+  rescue => e
+    render json: {
+      error: "#{e.class}: #{e.message}",
+      backtrace: e.backtrace.first(5)
+    }, status: 500
+  end
+
   # Probe for Action Cable via Solid Cable (RAILS_FEATURES.md #122-124).
   # Broadcasts from THIS worker Ractor — the publish side of the pubsub —
   # then polls solid_cable_messages for the row (a broadcast is a DB INSERT;
