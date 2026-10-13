@@ -156,7 +156,11 @@ row, tick it here, note the evidence (test file / probe status).
     worker via kino `/features/optimistic_lock_probe` (dedicated probe row,
     winning save 0→1, stale save raises and leaves the row untouched;
     destroy of the stale copy raises too — cleaned up via a fresh copy).
-2. **[CHECK] Pessimistic locking (row 72) — `Post.with_lock` in a job.
+2. **[DONE ✅]** Pessimistic locking (row 72) — verified in main
+    (`active_record_toolkit_test`: `Post.lock.to_sql` carries `FOR UPDATE`;
+    `with_lock` transaction updates the row) and in a worker via kino
+    `/features/pessimistic_lock_probe` (dedicated probe row, update inside
+    the held lock, cleanup, plus the same FOR UPDATE SQL check).
 3. **[CHECK] `normalizes` (row 74) — `normalizes :email, with: ->(v) { v.strip.downcase }`
     on User (norm Procs must be shareable — same class as scope lambdas).
 4. **[DONE ✅]** STI or delegated types (row 67) — smallest: `Comment::Admin`? Prefer

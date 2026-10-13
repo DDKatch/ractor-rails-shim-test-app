@@ -4,9 +4,9 @@ Goal: verify every core Rails feature that **80%+ of production Rails apps** act
 uses, exercise it end-to-end, and record what works vs what breaks under the
 ractor-rails-shim on Ruby 4.0.6 / Rails 8.1.3.
 
-Last updated: 2026-10-13 (rows 107/108 + 113/116 worker-verified — job resilience, enqueue options, mail hooks, mailer callbacks; rows 45–47 re-verified against the real Solid Cache store in workers, TODO #27; row 71 optimistic locking worker-verified; tally below)
+Last updated: 2026-10-13 (rows 107/108 + 113/116 worker-verified — job resilience, enqueue options, mail hooks, mailer callbacks; rows 45–47 re-verified against the real Solid Cache store in workers, TODO #27; rows 71+72 locking worker-verified; tally below)
 
-**Tally: ✅ 107/144 · 🔲 35 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
+**Tally: ✅ 108/144 · 🔲 34 · ⛔ 2 · ❌ 0** — keep this line and the Summary table in sync with every row flip.
 
 ## Feature matrix
 
@@ -94,7 +94,7 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 | 69 |                       | Nested attributes (`accepts_nested_attributes_for`) | ✅ Done | kino `/assoc_probe` in a worker: `Post.create!(comments_attributes: [...])` INSERTs the nested comment (shim: Rails' `define_non_cyclic_method` Procs → real `def` redefinitions; has_one assoc-scope where-values baked for workers) |
 | 70 |                       | Counter caches                      | ✅ Done | `Comment belongs_to :post, counter_cache: true`; `posts:recount_comments` repairs. kino `/assoc_probe` now asserts `comments_count == 1` after the nested-attributes create IN A WORKER |
 | 71 |                       | Optimistic locking (`lock_version`) | ✅ Done | Migration adds `lock_version` (default 0) to Post — Rails enables locking automatically. `active_record_toolkit_test` (main) + kino `/features/optimistic_lock_probe` in a worker: two copies of a dedicated probe row, the winning save bumps `lock_version` 0→1, the stale save raises `ActiveRecord::StaleObjectError` and leaves the row untouched; stale-destroy also raises (row cleaned up via a fresh copy) |
-| 72 |                       | Pessimistic locking (`with_lock`)   | 🔲 To audit | |
+| 72 |                       | Pessimistic locking (`with_lock`)   | ✅ Done | `active_record_toolkit_test` (main): `Post.lock.to_sql` carries `FOR UPDATE`; `with_lock` transaction updates the row. kino `/features/pessimistic_lock_probe` in a worker: `with_lock` round-trip (dedicated probe row, update inside the held lock, cleanup) + the same `FOR UPDATE` SQL check |
 | 73 |                       | Dirty tracking (`changed?`, `changes`, `saved_changes`) | ✅ Done | comment_test (new/changed/saved lifecycle: `changed?`, `changes` pair, `title_was`, post-save `saved_changes`) + kino `/features/dirty_probe` in a worker: identical values through mutation → save (instance-level state, no shim changes needed) |
 | 74 |                       | `normalizes` (Rails 7.1)            | 🔲 To audit | |
 | 75 |                       | `signed_id` / `find_signed` / `token_for` | ✅ Done | kino `/features/signed_id_probe` in a worker: `signed_id(expires_in:)` → `find_signed` round-trip, garbage signature → `nil` for `find_signed` and `InvalidSignature` raised for `find_signed!` (was implicit via ActiveStorage; now explicit). Required the shim 0.4.2 fix: main pre-warms the lazily-built `active_record/signed_id` verifier codec so workers hit the frozen `@codecs` cache (its rotation/secret-generator Procs are NoOpProcs post-freeze), plus a fully-qualified `SERIALIZERS` lookup, shareable stdlib-JSON default-option ivars, and a digest-length memo patch |
@@ -172,18 +172,18 @@ unchanged. See `TODO.md` for the check / implement / test plan behind every
 
 | Status | Count | Features |
 |--------|-------|----------|
-| ✅ Done | 107 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 62 (batch processing in workers), 63+64 (aggregates + group/having/distinct in workers), 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–71 (polymorphic, STI, HABTM, nested attributes, counter cache, optimistic locking), 73 (dirty tracking in workers), 75 (signed_id round-trip in workers; shim 0.4.2 codec pre-warm), 76 (insert_all/upsert_all in workers), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 107+108 (ActiveJob retry/discard declarations readable from workers + set(queue:, wait:) enqueue from workers via per-Ractor Concurrent executors), 113+116 (boot-registered interceptor + mailer after_action both run during worker-side delivery via the shim's hook-registry snapshot), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
-| — of which qualified ✅ | (10 of the 107) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
-| 🔲 To audit | 35 | See `TODO.md` for the check / implement / test plan per row |
+| ✅ Done | 108 | Rows 1–60 except #50 (already verified), plus the guides-sweep evidence and the kino-verified worker rows: 62 (batch processing in workers), 63+64 (aggregates + group/having/distinct in workers), 65 (enum in workers: real-def predicates/bangs/scopes/values reader + replayed EnumType registration), 66–72 (polymorphic, STI, HABTM, nested attributes, counter cache, optimistic + pessimistic locking), 73 (dirty tracking in workers), 75 (signed_id round-trip in workers; shim 0.4.2 codec pre-warm), 76 (insert_all/upsert_all in workers), 89 (head), 91 (conditional GET), 92 (basic auth), 93 (cookie jars), 94 (/up), 96 (collection partials), 98 (fields_with_errors wrapper), 99 (date/collection select), 101 (multipart upload), 107+108 (ActiveJob retry/discard declarations readable from workers + set(queue:, wait:) enqueue from workers via per-Ractor Concurrent executors), 113+116 (boot-registered interceptor + mailer after_action both run during worker-side delivery via the shim's hook-registry snapshot), 129 (CurrentAttributes), 120 (Action Text write + read-back in workers — sanitize still ⛔), 1 (validations now worker-verified via the shim's validator-descriptor replay) |
+| — of which qualified ✅ | (10 of the 108) | Partially-scoped rows: 1 (worker-verified; unresolvable-proc-condition callbacks skipped in workers), 40, 48, 67 (STI; delegated types pending), 68 (HABTM; has_one :through pending), 87, 92 (basic; digest/token pending), 120 (sanitize ⛔ in workers), 130, 135 |
+| 🔲 To audit | 34 | See `TODO.md` for the check / implement / test plan per row |
 | ⛔ Known limitations | 2 | #50 sanitize / simple_format (Nokogiri, permanent) · #90 `around_action` (SymbolicTransport doesn't replay `:around` filters — shim project or documented exclusion) |
 | ❌ Broken (worker) | 0 | none — the last ❌ (#98 `fields_with_errors`) was fixed by the validate-chain pass: worker-side `valid?` replays captured validator descriptors, invalid records no longer save in workers |
 
-Tally: 107 + 35 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-13 (job resilience 107 + enqueue options 108, mail hooks 113 + mailer callbacks 116, Solid Cache store in workers #27, optimistic locking 71).
+Tally: 108 + 34 + 2 + 0 = 144. Counts are maintained with each row flip — last updated 2026-10-13 (job resilience 107 + enqueue options 108, mail hooks 113 + mailer callbacks 116, Solid Cache store in workers #27, optimistic 71 + pessimistic 72 locking).
 
 ## Test Results (as of 2026-10-13)
 
 ```
-158 runs, 643 assertions, 0 failures, 0 errors, 0 skips
+159 runs, 650 assertions, 0 failures, 0 errors, 0 skips
 ```
 
 - **0 failures, 0 errors, 0 skips** — all feature-level tests pass, including the `:ractor` integration suite (no routes 555)
