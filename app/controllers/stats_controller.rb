@@ -151,6 +151,9 @@ class StatsController < ApplicationController
   # full mail pipeline (build + ERB render + delivery + test inbox) works.
   def mail_deliver_probe
     user = User.find_by(email: "signin@test.com")
+    user ||= User.order(:id).first
+    user ||= User.create!(email: "mail-deliver-#{Time.current.to_i}-#{rand(1000)}@example.com",
+                          password: "password123")
     mail = UserMailer.welcome_email(user)
     mail.deliver_now
 
@@ -163,6 +166,32 @@ class StatsController < ApplicationController
       delivered_subject: delivered&.subject,
       delivered_to: delivered&.to,
       body_includes_welcome: mail.body.encoded.include?("Welcome")
+    }
+  rescue => e
+    render json: {
+      error: "#{e.class}: #{e.message}",
+      backtrace: e.backtrace.first(5)
+    }, status: 500
+  end
+
+  # Probes for the mail hooks + mailer callbacks in a worker Ractor
+  # (RAILS_FEATURES.md #113 + #116). deliver_now from THIS worker must run
+  # the boot-registered interceptor (X-Audit-Interceptor stamped by the shim's
+  # hook-registry snapshot) and the mailer's after_action callback
+  # (X-Audit-Campaign stamped by UserMailer).
+  def mail_hooks_probe
+    user = User.find_by(email: "signin@test.com")
+    user ||= User.order(:id).first
+    user ||= User.create!(email: "mail-hooks-#{Time.current.to_i}-#{rand(1000)}@example.com",
+                          password: "password123")
+    mail = UserMailer.welcome_email(user)
+    mail.deliver_now
+
+    delivered = Mail::TestMailer.deliveries.last
+    render json: {
+      delivered: delivered.present?,
+      interceptor_header: delivered&.[]("X-Audit-Interceptor")&.value,
+      campaign_header: delivered&.[]("X-Audit-Campaign")&.value
     }
   rescue => e
     render json: {

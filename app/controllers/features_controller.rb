@@ -211,6 +211,29 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #107 + #108: ActiveJob resilience declarations and
+  # enqueue options from a worker Ractor. The retry_on / discard_on configs
+  # live in the rescue_handlers class_attribute — the probe reports what is
+  # readable from the worker (nil = unreadable, an audit finding). The
+  # enqueued DiscardJob is discarded silently on perform (discard_on
+  # ArgumentError), so the async adapter's delayed execution stays quiet.
+  def job_resilience_probe
+    job = DiscardJob.set(queue: "low", wait: 2.seconds).perform_later
+    retry_handlers = (FlakyJob.rescue_handlers.map { |entry| entry[0] } rescue nil)
+    discard_handlers = (DiscardJob.rescue_handlers.map { |entry| entry[0] } rescue nil)
+
+    render json: {
+      enqueued: job.is_a?(DiscardJob),
+      queue: job.queue_name,
+      scheduled_in_future: job.scheduled_at.is_a?(Time) && job.scheduled_at > Time.current,
+      priority: job.priority,
+      retry_handlers: retry_handlers,
+      discard_handlers: discard_handlers
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }

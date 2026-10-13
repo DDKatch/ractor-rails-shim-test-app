@@ -498,6 +498,14 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # Ractor (proves the full mail pipeline including test inbox inspection).
   mdp_status, mdp_headers, mdp_body = dispatch(app, "GET", "/mail_deliver_probe", nil, nil)
 
+  # Mail hooks probe (rows 113 + 116): boot-registered interceptor and the
+  # mailer's after_action callback must run during worker-side deliver_now.
+  mhp_status, mhp_headers, mhp_body = dispatch(app, "GET", "/mail_hooks_probe", nil, nil)
+
+  # Job resilience probe (rows 107 + 108): set(queue:, wait:) enqueue and
+  # rescue-handlers visibility from a worker Ractor.
+  jrp_status, jrp_headers, jrp_body = dispatch(app, "GET", "/features/job_resilience_probe", nil, nil)
+
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
   # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
   # patched) — must return 200 {enqueued: true}.
@@ -623,6 +631,8 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /attach_probe" => [ap_status, ap_headers, ap_body],
     "GET /attach_read_probe" => [arp_status, arp_headers, arp_body],
     "GET /mail_deliver_probe" => [mdp_status, mdp_headers, mdp_body],
+    "GET /mail_hooks_probe" => [mhp_status, mhp_headers, mhp_body],
+    "GET /features/job_resilience_probe" => [jrp_status, jrp_headers, jrp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "GET /assoc_probe" => [asp_status, asp_headers, asp_body],
@@ -907,6 +917,42 @@ else
                    "GET /mail_deliver_probe must show the delivered email subject"
       assert mdp_parsed["body_includes_welcome"],
              "GET /mail_deliver_probe body must include 'Welcome'"
+
+      # --- Rows 113 + 116: mail hooks + mailer callbacks in a worker Ractor ---
+      # GET /mail_hooks_probe delivers in the worker; the shim's hook-registry
+      # snapshot makes the boot-registered interceptor fire in workers, and the
+      # mailer's after_action stamps its header during the worker-side build.
+      mhp_key = "GET /mail_hooks_probe"
+      mhp_status = results[mhp_key][0]
+      mhp_body = results[mhp_key][2]
+      assert_equal 200, mhp_status,
+                   "GET /mail_hooks_probe must return 200 in a worker Ractor (got #{mhp_status}: #{mhp_body[0..200]})"
+      mhp_parsed = JSON.parse(mhp_body)
+      assert mhp_parsed["delivered"], "GET /mail_hooks_probe must deliver from a worker"
+      assert_equal "registered-in-main", mhp_parsed["interceptor_header"],
+                   "the boot-registered interceptor must stamp X-Audit-Interceptor on worker-delivered mail (row 113)"
+      assert_equal "rails-features-audit", mhp_parsed["campaign_header"],
+                   "the mailer's after_action must stamp X-Audit-Campaign on worker-built mail (row 116)"
+
+      # --- Rows 107 + 108: ActiveJob resilience + enqueue options in a worker ---
+      # GET /job_resilience_probe enqueues with set(queue:, wait:) inside the
+      # worker and reports the rescue-handler declarations read back from the
+      # frozen classes.
+      jrp_key = "GET /features/job_resilience_probe"
+      jrp_status = results[jrp_key][0]
+      jrp_body = results[jrp_key][2]
+      assert_equal 200, jrp_status,
+                   "GET /job_resilience_probe must return 200 in a worker Ractor (got #{jrp_status}: #{jrp_body[0..200]})"
+      jrp_parsed = JSON.parse(jrp_body)
+      assert jrp_parsed["enqueued"], "GET /job_resilience_probe must enqueue from a worker"
+      assert_equal "low", jrp_parsed["queue"],
+                   "worker-side set(queue: 'low') must be reflected on the enqueued job (row 108)"
+      assert jrp_parsed["scheduled_in_future"],
+                   "worker-side set(wait: 2.seconds) must schedule a future run time (row 108)"
+      assert_includes jrp_parsed["retry_handlers"], "StandardError",
+                   "FlakyJob's retry_on declaration must be readable from a worker (row 107)"
+      assert_includes jrp_parsed["discard_handlers"], "ArgumentError",
+                   "DiscardJob's discard_on declaration must be readable from a worker (row 107)"
 
       # --- TODO #5: ActiveJob enqueue in a worker Ractor (FIXED in shim) ---
       # GET /job_enqueue_probe runs `WelcomeJob.perform_later(user)` inside a
