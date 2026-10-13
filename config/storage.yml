@@ -1,3 +1,11 @@
 test:
   service: Disk
   root: <%= Rails.root.join("tmp/storage") %>
+
+# RAILS_FEATURES.md row 125: a second, public service. The whole file is
+# parsed as the service registry (top-level keys = service names), so this
+# resolves in every env; the kino pre-builds it before the freeze.
+test_public:
+  service: Disk
+  root: <%= Rails.root.join("tmp/storage_public") %>
+  public: true

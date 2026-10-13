@@ -17,6 +17,7 @@ Rails.application.routes.draw do
   get "/mail_probe", to: "stats#mail_probe"
   get "/attach_probe", to: "stats#attach_probe"
   get "/attach_read_probe", to: "stats#attach_read_probe"
+  get "/storage_probe", to: "stats#storage_probe"
   get "/mail_deliver_probe", to: "stats#mail_deliver_probe"
   get "/mail_hooks_probe", to: "stats#mail_hooks_probe"
   get "/job_enqueue_probe", to: "stats#job_enqueue_probe"

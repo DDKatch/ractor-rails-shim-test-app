@@ -159,4 +159,37 @@ class ActiveStorageTest < ActiveSupport::TestCase
     other.avatar.purge rescue nil
     other.destroy rescue nil
   end
+
+  # --- rows 125 + 126 + 127 (main mode) -------------------------------------
+
+  test "public service resolves and routes upload/download (row 125)" do
+    blob = ActiveStorage::Blob.create_and_upload!(
+      io: StringIO.new("public blob bytes"),
+      filename: "public.txt",
+      content_type: "text/plain",
+      service_name: "test_public"
+    )
+
+    assert_equal "test_public", blob.service_name
+    assert ActiveStorage::Blob.services.fetch(:test_public).public?,
+           "the test_public disk service must be public (row 125)"
+    assert_equal "public blob bytes", blob.download, "download must round-trip from the public service (row 127)"
+    assert_not_equal ActiveStorage::Blob.service.root.to_s, blob.service.root.to_s,
+                     "the public service must use its own storage root"
+  ensure
+    blob&.purge rescue nil
+  end
+
+  test "analyze marks a text blob analyzed via NullAnalyzer (row 126)" do
+    blob = ActiveStorage::Blob.create_and_upload!(
+      io: StringIO.new("plain text to analyze"),
+      filename: "notes.txt",
+      content_type: "text/plain"
+    )
+    refute blob.analyzed?
+    blob.analyze
+    assert blob.reload.analyzed?, "analyze must mark the blob analyzed (row 126)"
+  ensure
+    blob&.purge rescue nil
+  end
 end

@@ -125,6 +125,58 @@ class StatsController < ApplicationController
     }, status: 500
   end
 
+  # Probe for rows 125 + 126 + the download half of 127 (RAILS_FEATURES.md).
+  # - Row 125: a second, PUBLIC disk service (`test_public` in
+  #   config/storage.yml) resolves and routes a blob's upload/download
+  #   worker-side. The blob is created with the same explicit-key pattern as
+  #   attach_probe (has_secure_token / block callbacks don't fire in
+  #   workers).
+  # - Row 126: the analyzer chain — text/plain falls through the built-in
+  #   analyzers to NullAnalyzer; `blob.analyze` merges `analyzed: true`
+  #   into the blob metadata and `blob.analyzed?` flips (Rails 8.1 tracks
+  #   it in a column).
+  # - Row 127 (download half): `blob.download` reads the bytes back from
+  #   the public disk service in the worker.
+  #
+  # The blob is purged at the START of each run (not at the end): the kino
+  # fetches the proxy route AFTER this probe returns, so the blob must stay
+  # alive for the rest of the run; purging first keeps repeated kino runs
+  # hermetic.
+  def storage_probe
+    ActiveStorage::Blob.where(service_name: "test_public").find_each(&:purge)
+
+    key = SecureRandom.base58(ActiveStorage::Blob::MINIMUM_TOKEN_LENGTH)
+    io = StringIO.new("public blob bytes")
+    blob = ActiveStorage::Blob.new(
+      key: key,
+      filename: "public.txt",
+      content_type: "text/plain",
+      service_name: "test_public"
+    )
+    blob.unfurl(io)
+    io.rewind
+    blob.upload_without_unfurling(io)
+    blob.save!
+
+    service = ActiveStorage::Blob.services.fetch(:test_public)
+
+    blob.analyze
+    downloaded = blob.download
+
+    render json: {
+      service_name_ok: blob.service_name == "test_public",
+      public_service_ok: service.public? == true,
+      download_ok: downloaded == "public blob bytes",
+      analyzed_ok: blob.analyzed?,
+      signed_id: blob.signed_id
+    }
+  rescue => e
+    render json: {
+      error: "#{e.class}: #{e.message}",
+      backtrace: e.backtrace.first(5)
+    }, status: 500
+  end
+
   # Probe for the ActiveStorage read-back path in a worker Ractor. After
   # attach_probe has attached an avatar, this probe reads it back from the DB
   # (fresh query, fresh blob) to prove the persisted attachment + blob are

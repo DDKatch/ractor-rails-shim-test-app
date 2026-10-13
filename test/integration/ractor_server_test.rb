@@ -86,6 +86,17 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
 
   Rails.application.initialize!
 
+  # Row 125: the second, public disk service must be IN the frozen registry
+  # cache before the freeze — a worker-side `fetch` of a not-yet-built
+  # service would mutate the frozen Registry. The `active_storage.services`
+  # initializer (post-initialize!) builds the registry from config/
+  # storage.yml; pre-build :test_public here, while it is still mutable.
+  ActiveStorage::Blob.services.fetch(:test_public)
+  # Same lazy-ivar class pattern: Blob's signed_id_verifier reader is
+  # `@signed_id_verifier ||= ActiveStorage.verifier` — a worker cannot SET
+  # class ivars (IsolationError), so touch it main-side before the freeze.
+  ActiveStorage::Blob.signed_id_verifier
+
   # Force the :test mailer delivery method AFTER initialize! (the environment
   # file sets :smtp, which would otherwise be captured by the shim's mail patch
   # as Mail::SMTP — whose ::DEFAULTS constant is un-shareable). :test proves the
@@ -555,6 +566,12 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # worker Ractor.
   dur_status, dur_headers, dur_body = dispatch(app, "GET", "/features/durations_probe", nil, nil)
 
+  # Storage probe (rows 125 + 126 + the download half of 127): public disk
+  # service resolves + routes upload/download worker-side; the analyzer
+  # chain marks the text blob analyzed. The response carries the signed_id
+  # for the follow-up proxy-route dispatch below.
+  stp_status, stp_headers, stp_body = dispatch(app, "GET", "/storage_probe", nil, nil)
+
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
   # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
   # patched) — must return 200 {enqueued: true}.
@@ -698,6 +715,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/composite_pk_probe" => [cpp_status, cpp_headers, cpp_body],
     "GET /features/config_probe" => [cfg_status, cfg_headers, cfg_body],
     "GET /features/durations_probe" => [dur_status, dur_headers, dur_body],
+    "GET /storage_probe" => [stp_status, stp_headers, stp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
@@ -729,6 +747,15 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "DELETE /posts/#{del_post_id} (dependents)" => [del_status, del_headers, del_body_resp],
     "DELETE /posts/#{nested_post_id}/comments/#{nested_comment_id} (nested)" => [nested_del_status, nested_del_headers, nested_del_body_resp],
   }
+
+  # Row 127: follow-up proxy-route dispatch. The storage probe returns the
+  # blob's signed id; the real ActiveStorage proxy controller streams the
+  # stored bytes back through a worker request.
+  if stp_status == 200 && (stp_sid = JSON.parse(stp_body)["signed_id"])
+    proxy_status, proxy_headers, proxy_body =
+      dispatch(app, "GET", "/rails/active_storage/blobs/proxy/#{stp_sid}/public.txt", nil, nil)
+    results["GET /rails/active_storage/blobs/proxy"] = [proxy_status, proxy_headers, proxy_body]
+  end
 
   puts JSON.generate(
     "post_id" => post_id,
@@ -1228,6 +1255,37 @@ else
       assert dur_parsed["duration_scope_ok"], "duration-range scope must match rows in a worker (row 132)"
       assert dur_parsed["time_math_ok"], "end_of_day/beginning_of_day math must hold in a worker (row 132)"
       assert dur_parsed["with_zone_ok"], "Durations must yield TimeWithZone in a worker (row 132)"
+
+      # --- Rows 125 + 126: public service + analyzer chain in a worker ---
+      # GET /storage_probe: the public disk service resolves and routes
+      # upload/download worker-side; blob.analyze marks the text blob
+      # analyzed (NullAnalyzer fallback for text/plain).
+      stp_key = "GET /storage_probe"
+      stp_status = results[stp_key][0]
+      stp_body = results[stp_key][2]
+      assert_equal 200, stp_status,
+                   "GET /storage_probe must return 200 in a worker Ractor (got #{stp_status}: #{stp_body[0..200]})"
+      stp_parsed = JSON.parse(stp_body)
+      assert stp_parsed["service_name_ok"], "the blob must route to the test_public service in a worker (row 125)"
+      assert stp_parsed["public_service_ok"], "the test_public disk service must be public (row 125)"
+      assert stp_parsed["download_ok"], "blob.download must round-trip from the public service in a worker (row 127)"
+      assert stp_parsed["analyzed_ok"], "blob.analyze must mark a text blob analyzed in a worker (row 126)"
+
+      # --- Row 127: the real proxy route streams the stored bytes ---
+      # Follow-up dispatch with the signed id from the probe response: the
+      # ActiveStorage proxy controller downloads from the service and
+      # streams the body.
+      proxy_key = "GET /rails/active_storage/blobs/proxy"
+      if results[proxy_key]
+        proxy_status, proxy_headers, proxy_body = results[proxy_key]
+        assert_equal 200, proxy_status,
+                     "the blob proxy route must stream from a worker (got #{proxy_status}: #{proxy_body[0..200]})"
+        assert_equal "public blob bytes", proxy_body,
+                     "the blob proxy route must return the stored bytes (row 127)"
+        proxy_content_type = (proxy_headers || {})["content-type"].to_s
+        assert_match(%r{\Atext/plain}, proxy_content_type,
+                     "the proxy response must carry the blob content type (row 127)")
+      end
       assert aap_parsed["log_jsonb_ok"],
                    "AuditLog jsonb containment must work in a worker (row 82)"
       assert aap_parsed["log_array_ok"],

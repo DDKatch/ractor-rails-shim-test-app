@@ -140,4 +140,19 @@ class FeaturesControllerTest < ActionDispatch::IntegrationTest
     # PermissionsPolicy, but the emitted header keeps the old name).
     assert_match(/camera 'none'/, response.headers["Feature-Policy"].to_s, "configured policy header (row 137)")
   end
+
+  # --- blob proxy streaming (row 127) ----------------------------------------
+
+  test "blob proxy route streams the stored bytes" do
+    blob = ActiveStorage::Blob.create_and_upload!(
+      io: StringIO.new("proxy bytes"),
+      filename: "proxy.txt",
+      content_type: "text/plain"
+    )
+    get Rails.application.routes.url_helpers.rails_service_blob_proxy_path(blob.signed_id, blob.filename.to_s)
+    assert_response :success
+    assert_equal "proxy bytes", response.body, "the proxy route must stream the stored bytes (row 127)"
+  ensure
+    blob&.purge rescue nil
+  end
 end
