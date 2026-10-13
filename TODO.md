@@ -200,8 +200,17 @@ row, tick it here, note the evidence (test file / probe status).
     `/features/audit_archive_probe` in a worker: both queries run
     worker-side (plus the row-83 jsonb on AuditArchive). Ranges/uuid PK
     not exercised — single-PK kino (documented in the row note).
-11. **[CHECK] Composite PKs / multiple DBs (rows 80–81) — low; document
-    "single-DB kino" if skipped.
+11. **[DONE ✅ (row 80) / DEFERRED (row 81)]** Composite PKs / multiple
+    DBs — row 80 done: `region_stats` with PK `(region, year)`,
+    `self.primary_key = [:region, :year]`; `region_stat_test` (main) +
+    kino `/features/composite_pk_probe` (tuple find, PK-routed update,
+    duplicate-PK `RecordNotUnique`) in a worker. Migration gotcha: `id:
+    false` + a composite `primary_key:` array silently drops the PK —
+    the array alone implies no id column. Row 81 (multiple DBs) is
+    deferred: the kino runs a single PG database, and `connects_to` +
+    `connected_to` would need a second database plus per-Ractor pool
+    replication in the shim — revisit only if a second-DB kino becomes
+    a priority.
 12. **[DONE ✅]** Custom form builders / `fields_for` (row 97) — kino
     `/features/builder_form_probe` in a worker: `form_with builder:
     LabeledFormBuilder` renders the custom labeled-field wrapper, and a
