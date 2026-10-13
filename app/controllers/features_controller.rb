@@ -306,6 +306,31 @@ class FeaturesController < ApplicationController
     render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 
+  # RAILS_FEATURES.md #74: attribute normalization (normalizes). From a
+  # worker Ractor: the class-level normalize_value_for and an instance
+  # assignment both route through the NormalizedValueType holding the
+  # normalizer Proc — the same shareability class as scope lambdas. No
+  # persistence: read-only assignment on an existing user, then reload.
+  def normalizes_probe
+    normalized_class = User.normalize_value_for(:email, " CRUISE@EXAMPLE.COM\n")
+    user = User.order(:id).first
+    return head(:not_found) unless user
+
+    original = user.email
+    user.email = " #{original} "
+    normalized_instance = user.email
+    user.reload
+
+    render json: {
+      class_level_normalized: normalized_class,
+      class_level_ok: normalized_class == "cruise@example.com",
+      instance_normalized: normalized_instance,
+      instance_ok: normalized_instance == original.to_s.strip.downcase
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   # RAILS_FEATURES.md #129: CurrentAttributes round-trip through a request.
   def current_attrs
     render json: { request_id: Current.request_id }

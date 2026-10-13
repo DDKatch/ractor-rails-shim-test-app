@@ -514,6 +514,10 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # from a worker Ractor.
   plp_status, plp_headers, plp_body = dispatch(app, "GET", "/features/pessimistic_lock_probe", nil, nil)
 
+  # Normalizes probe (row 74): normalizer Proc (NormalizedValueType) callable
+  # from a worker Ractor.
+  nzp_status, nzp_headers, nzp_body = dispatch(app, "GET", "/features/normalizes_probe", nil, nil)
+
   # Job enqueue probe (TODO #5): ActiveJob perform_later from a worker Ractor.
   # FIXED in the shim (GlobalID.app deep-frozen; CGI class-variable defaults
   # patched) — must return 200 {enqueued: true}.
@@ -647,6 +651,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/job_resilience_probe" => [jrp_status, jrp_headers, jrp_body],
     "GET /features/optimistic_lock_probe" => [olp_status, olp_headers, olp_body],
     "GET /features/pessimistic_lock_probe" => [plp_status, plp_headers, plp_body],
+    "GET /features/normalizes_probe" => [nzp_status, nzp_headers, nzp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
     "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
@@ -1006,6 +1011,20 @@ else
                    "Post.lock must generate SELECT ... FOR UPDATE (row 72)"
       assert plp_parsed["winner_title_present"],
                    "the update inside with_lock must persist (row 72)"
+
+      # --- Row 74: normalizes in a worker ---
+      # GET /normalizes_probe routes an email through the normalizer Proc
+      # (NormalizedValueType in the class's @attribute_types) from a worker.
+      nzp_key = "GET /features/normalizes_probe"
+      nzp_status = results[nzp_key][0]
+      nzp_body = results[nzp_key][2]
+      assert_equal 200, nzp_status,
+                   "GET /normalizes_probe must return 200 in a worker Ractor (got #{nzp_status}: #{nzp_body[0..200]})"
+      nzp_parsed = JSON.parse(nzp_body)
+      assert nzp_parsed["class_level_ok"],
+                   "User.normalize_value_for(:email, ...) must strip+downcase in a worker (row 74)"
+      assert nzp_parsed["instance_ok"],
+                   "user.email = assignment must normalize through the NormalizedValueType in a worker (row 74)"
 
       # --- TODO #5: ActiveJob enqueue in a worker Ractor (FIXED in shim) ---
       # GET /job_enqueue_probe runs `WelcomeJob.perform_later(user)` inside a

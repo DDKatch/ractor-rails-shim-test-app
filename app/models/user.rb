@@ -20,6 +20,11 @@ class User < ApplicationRecord
   scope :recent, -> { order(created_at: :desc) }
   scope :with_posts, -> { includes(:posts) }
 
+  # RAILS_FEATURES.md #74: attribute normalization (Rails 7.1). The normalizer
+  # Proc lives inside the attribute's NormalizedValueType (class ivar
+  # @attribute_types) — the same shareability class as scope lambdas.
+  normalizes :email, with: ->(v) { v.strip.downcase }
+
   private
 
   def enqueue_welcome_email

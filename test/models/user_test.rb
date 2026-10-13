@@ -25,4 +25,15 @@ class UserTest < ActiveSupport::TestCase
     users = User.recent
     assert users.first.created_at >= users.last.created_at
   end
+
+  # --- normalizes (row 74) ------------------------------------------------------
+
+  test "normalizes :email strips and downcases" do
+    assert_equal "cruise@example.com",
+                 User.normalize_value_for(:email, " CRUISE@EXAMPLE.COM\n")
+
+    user = User.new
+    user.email = " Cruise@Example.COM "
+    assert_equal "cruise@example.com", user.email
+  end
 end
