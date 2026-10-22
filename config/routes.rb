@@ -57,6 +57,12 @@ get "/assoc_probe", to: "stats#assoc_probe"
     get "/error_probe", to: "features#error_probe"
     get "/current", to: "features#current_attrs"
     get "/rich_text", to: "features#rich_text"
+    get "/around_probe", to: "features#around_probe"
+    get "/dom_id_probe", to: "features#dom_id_probe"
+    get "/localized_probe", to: "features#localized_probe"
+    get "/turbo_frame_probe", to: "features#turbo_frame_probe"
+    get "/live_probe", to: "features#live_probe"
+    get "/geo_serializer_probe", to: "features#geo_serializer_probe"
   end
   get "up" => "rails/health#show", as: :rails_health_check
   root "posts#index"

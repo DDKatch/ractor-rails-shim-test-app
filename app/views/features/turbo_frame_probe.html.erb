@@ -1,0 +1,8 @@
+<%# RAILS_FEATURES.md #104: Turbo Frame server-side markup. Hand-rolled
+    <turbo-frame> wrappers (the app ships no JS and no turbo-rails gem) —
+    this audits the server-rendered frame HTML: an eager frame wrapping a
+    partial collection, and a lazy frame with a src attribute. %>
+<turbo-frame id="posts-frame">
+  <%= render partial: "posts/post", collection: @posts %>
+</turbo-frame>
+<turbo-frame id="posts-lazy" src="/stats"></turbo-frame>

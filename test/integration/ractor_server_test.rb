@@ -567,6 +567,19 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # Ractor.
   dur_status, dur_headers, dur_body = dispatch(app, "GET", "/features/durations_probe", nil, nil)
 
+  # Around probe (row 90): two symbolic around_action filters wrap the action
+  # in a worker Ractor — the X-Around-Order header carries the full
+  # enter/body/exit transcript.
+  arw_status, arw_headers, arw_body = dispatch(app, "GET", "/features/around_probe", nil, nil)
+
+  # P3 probes (rows 102, 103, 104, 95, 109): dom_id, localized views,
+  # turbo-frame markup, Live SSE, custom job serializers — worker dispatches.
+  did_status, did_headers, did_body = dispatch(app, "GET", "/features/dom_id_probe", nil, nil)
+  lcp_status, lcp_headers, lcp_body = dispatch(app, "GET", "/features/localized_probe", nil, nil)
+  tfp_status, tfp_headers, tfp_body = dispatch(app, "GET", "/features/turbo_frame_probe", nil, nil)
+  lvp_status, lvp_headers, lvp_body = dispatch(app, "GET", "/features/live_probe", nil, nil)
+  gsp_status, gsp_headers, gsp_body = dispatch(app, "GET", "/features/geo_serializer_probe", nil, nil)
+
   # Error reporter probe (row 133): Rails.error.handle swallows + reports;
   # Rails.error.record re-raises — from a worker Ractor.
   err_status, err_headers, err_body = dispatch(app, "GET", "/features/error_probe", nil, nil)
@@ -720,6 +733,12 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/composite_pk_probe" => [cpp_status, cpp_headers, cpp_body],
     "GET /features/config_probe" => [cfg_status, cfg_headers, cfg_body],
     "GET /features/durations_probe" => [dur_status, dur_headers, dur_body],
+    "GET /features/around_probe" => [arw_status, arw_headers, arw_body],
+    "GET /features/dom_id_probe" => [did_status, did_headers, did_body],
+    "GET /features/localized_probe" => [lcp_status, lcp_headers, lcp_body],
+    "GET /features/turbo_frame_probe" => [tfp_status, tfp_headers, tfp_body],
+    "GET /features/live_probe" => [lvp_status, lvp_headers, lvp_body],
+    "GET /features/geo_serializer_probe" => [gsp_status, gsp_headers, gsp_body],
     "GET /features/error_probe" => [err_status, err_headers, err_body],
     "GET /storage_probe" => [stp_status, stp_headers, stp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
@@ -1265,6 +1284,79 @@ else
       assert dur_parsed["default_zone_ok"], "Time.zone must be Europe/Berlin in a worker (row 131)"
       assert dur_parsed["attribute_zone_ok"], "AR timestamps must convert to the app zone in a worker (row 131)"
       assert dur_parsed["use_zone_ok"], "Time.use_zone must round-trip in a worker (row 131)"
+
+      # --- Row 90: around_action wrap replay in a worker ---
+      # GET /around_probe: two symbolic around filters wrap the action; the
+      # header transcript must show first-declared outermost, body inside
+      # both, exits unwinding inner-first (matches ActiveSupport exactly).
+      arw_key = "GET /features/around_probe"
+      arw_status = results[arw_key][0]
+      arw_headers = results[arw_key][1]
+      arw_body = results[arw_key][2]
+      assert_equal 200, arw_status,
+                   "GET /around_probe must return 200 in a worker Ractor (got #{arw_status}: #{arw_body[0..200]})"
+      arw_parsed = JSON.parse(arw_body)
+      assert arw_parsed["around_action_ok"], "the wrapped action body must run inside the around wrappers (row 90)"
+      arw_order = arw_headers["X-Around-Order"] || arw_headers["x-around-order"] || ""
+      assert_equal "first-enter,second-enter,body,second-exit,first-exit", arw_order,
+                   "around filters must wrap in ActiveSupport order in a worker (row 90; got #{arw_order.inspect})"
+      arw_elapsed = (arw_headers["X-Around-Elapsed"] || arw_headers["x-around-elapsed"] || "0").to_f
+      assert arw_elapsed > 0, "the outer around filter must have timed the wrapped action (row 90; got #{arw_elapsed})"
+
+      # --- Row 102: dom_id / RecordIdentifier in a worker ---
+      did_key = "GET /features/dom_id_probe"
+      did_status = results[did_key][0]
+      did_body = results[did_key][2]
+      assert_equal 200, did_status,
+                   "GET /dom_id_probe must return 200 in a worker Ractor (got #{did_status}: #{did_body[0..200]})"
+      did_parsed = JSON.parse(did_body)
+      assert did_parsed["dom_id_ok"], "dom_id(record) must round-trip in a worker (row 102)"
+      assert did_parsed["dom_class_ok"], "dom_class(record) must match in a worker (row 102)"
+      assert did_parsed["new_record_ok"], "dom_id(new record) must be new_<singular> in a worker (row 102)"
+
+      # --- Row 103: localized views in a worker ---
+      lcp_key = "GET /features/localized_probe"
+      lcp_status = results[lcp_key][0]
+      lcp_body = results[lcp_key][2]
+      assert_equal 200, lcp_status,
+                   "GET /localized_probe must return 200 in a worker Ractor (got #{lcp_status}: #{lcp_body[0..200]})"
+      assert lcp_body.include?('data-variant="en"'),
+             "the .en localized template variant must win the lookup in a worker (row 103)"
+      assert_not lcp_body.include?('data-variant="fallback"'),
+                 "the non-localized fallback template must NOT be picked when a .en variant exists (row 103)"
+
+      # --- Row 104: Turbo Frame server-side markup in a worker ---
+      tfp_key = "GET /features/turbo_frame_probe"
+      tfp_status = results[tfp_key][0]
+      tfp_body = results[tfp_key][2]
+      assert_equal 200, tfp_status,
+                   "GET /turbo_frame_probe must return 200 in a worker Ractor (got #{tfp_status}: #{tfp_body[0..200]})"
+      assert tfp_body.include?('<turbo-frame id="posts-frame">'),
+             "the server-rendered turbo-frame wrapper must be present in a worker (row 104)"
+      assert tfp_body.include?('<turbo-frame id="posts-lazy" src="/stats">'),
+             "the lazy turbo-frame with src must be present in a worker (row 104)"
+
+      # --- Row 95: ActionController::Live SSE in a worker ---
+      lvp_key = "GET /features/live_probe"
+      lvp_status = results[lvp_key][0]
+      lvp_body = results[lvp_key][2]
+      assert_equal 200, lvp_status,
+                   "GET /live_probe must return 200 in a worker Ractor (got #{lvp_status}: #{lvp_body[0..300]})"
+      assert lvp_body.include?("event: first") && lvp_body.include?("event: second"),
+             "both SSE events must stream from a worker Ractor (row 95; got #{lvp_body[0..200]})"
+
+      # --- Row 109: custom job argument serializers in a worker ---
+      gsp_key = "GET /features/geo_serializer_probe"
+      gsp_status = results[gsp_key][0]
+      gsp_body = results[gsp_key][2]
+      assert_equal 200, gsp_status,
+                   "GET /geo_serializer_probe must return 200 in a worker Ractor (got #{gsp_status}: #{gsp_body[0..300]})"
+      gsp_parsed = JSON.parse(gsp_body)
+      assert gsp_parsed["serializer_lookup_ok"],
+             "the custom serializer must be found in the registry in a worker (row 109)"
+      assert gsp_parsed["serialized_shape_ok"], "GeoPoint must serialize via the custom serializer in a worker (row 109)"
+      assert gsp_parsed["round_trip_ok"], "GeoPoint must deserialize back through ActiveJob::Arguments in a worker (row 109)"
+      assert gsp_parsed["enqueue_ok"], "GeoProbeJob must enqueue with a custom-serialized arg in a worker (row 109)"
 
       # --- Row 133: the error reporter in a worker ---
       err_key = "GET /features/error_probe"

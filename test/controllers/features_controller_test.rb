@@ -29,6 +29,59 @@ class FeaturesControllerTest < ActionDispatch::IntegrationTest
     assert_empty response.body
   end
 
+  test "around_action filters wrap the action in ActiveSupport order (row 90)" do
+    get "/features/around_probe"
+    assert_response :success
+    assert_equal true, JSON.parse(response.body)["around_action_ok"]
+
+    order = response.headers["X-Around-Order"]
+    assert_equal "first-enter,second-enter,body,second-exit,first-exit", order,
+                 "around filters must wrap first-declared-outermost with the body inside both"
+
+    elapsed = response.headers["X-Around-Elapsed"].to_f
+    assert_operator elapsed, :>, 0, "the outer around filter must have timed the wrapped action"
+  end
+
+  test "dom_id and dom_class round-trip records (row 102)" do
+    get "/features/dom_id_probe"
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["dom_id_ok"]
+    assert body["dom_class_ok"]
+    assert body["new_record_ok"]
+  end
+
+  test "localized view lookup picks the .en variant (row 103)" do
+    get "/features/localized_probe"
+    assert_response :success
+    assert_includes response.body, 'data-variant="en"'
+  end
+
+  test "turbo frame markup renders server-side (row 104)" do
+    get "/features/turbo_frame_probe"
+    assert_response :success
+    assert_includes response.body, '<turbo-frame id="posts-frame">'
+    assert_includes response.body, '<turbo-frame id="posts-lazy" src="/stats">'
+  end
+
+  test "live SSE action streams both events (row 95)" do
+    get "/features/live_probe"
+    assert_response :success
+    assert_includes response.body, "event: first"
+    assert_includes response.body, "event: second"
+  end
+
+  test "custom GeoPoint job serializer round-trips (row 109)" do
+    get "/features/geo_serializer_probe"
+    assert_response :success
+    body = JSON.parse(response.body)
+    assert body["serializer_lookup_ok"]
+    assert body["serialized_shape_ok"]
+    assert body["round_trip_ok"]
+    assert body["enqueue_ok"]
+    assert_equal "GeoPointSerializer", body.dig("serialized", "_aj_serialized")
+  end
+
   test "basic auth rejects wrong credentials and accepts correct ones" do
     get "/features/basic_auth"
     assert_response :unauthorized

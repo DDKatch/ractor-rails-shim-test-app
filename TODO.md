@@ -292,16 +292,37 @@ row, tick it here, note the evidence (test file / probe status).
 
 ## P3 — niche / low priority
 
-51. **[CHECK] Turbo Frames / Streams server-side (rows 104–105) —
-    respond with a `turbo_stream` template on a probe; no JS needed to
-    verify server rendering.
-52. **[CHECK] `dom_id` (row 102) — used by Turbo; trivial render probe.
-53. **[CHECK] Localized views (row 103) — add `index.en.html.erb` alias
-    pattern probe.
-54. **[CHECK] `ActionController::Live` SSE (row 95) — probe route streaming
-    two events; check per-request thread + Ractor interaction.
-55. **[CHECK] Custom job serializers (row 109) — serialize a
-    Struct/GeoPoint argument.
+51. **[DONE ✅ (row 104) / row 105 PENDING]** Turbo Frames / Streams
+    server-side — row 104 done: `/features/turbo_frame_probe` renders
+    hand-rolled `<turbo-frame>` wrappers (eager collection around the
+    `posts/post` partial + a lazy `src` frame) in a worker; asserted in
+    `ractor_server_test.rb`. Row 105 (turbo_stream responses) stays
+    pending: it needs the `turbo-rails` gem's template handler — a gem-
+    adoption decision, not a probe.
+52. **[DONE ✅]** `dom_id` (row 102) — `/features/dom_id_probe` in a worker:
+    `dom_id(record)`, `dom_class`, `dom_id(new)` all round-trip.
+    `ActionView::RecordIdentifier` included at boot on
+    FeaturesController (worker-side include would mutate the shared
+    class). Main-mode coverage in `features_controller_test`.
+53. **[DONE ✅]** Localized views (row 103) — `localized_probe` renders
+    through a `localized_probe.en.html.erb` variant; worker asserts the
+    `.en` stamp wins the lookup and the fallback variant is not picked.
+54. **[DONE ✅]** `ActionController::Live` SSE (row 95) —
+    `/features/live_probe` streams two events through `response.stream`
+    from a worker (inline streaming per shim a9059bc); both events
+    asserted in the response body.
+55. **[DONE ✅]** Custom job serializers (row 109) — `GeoPoint` (Struct) +
+    `GeoPointSerializer` registered via
+    `ActiveJob::Serializers.add_serializers`; `/features/geo_serializer_probe`
+    in a worker: registry lookup, serialize→deserialize round-trip, and
+    `GeoProbeJob.perform_later(GeoPoint.new(...))` enqueue. Found + fixed a
+    NEW shim wall: `ActiveJob::Serializers`' registry Set + lookup Hash
+    class ivars now frozen at prepare time (shim freezer patch —
+    `patches/active_job.rb`). Initializer requires the serializer files
+    explicitly (initializers run before Zeitwerk autoload).
+56. **[CHECK] Solid Queue (row 110) — bundle + run dispatcher as a second
+    process; enqueue from a worker; assert job performs. Biggest remaining
+    backend question.
 56. **[CHECK] Solid Queue (row 110) — bundle + run dispatcher as a second
     process; enqueue from a worker; assert job performs. Biggest remaining
     backend question.
@@ -317,9 +338,10 @@ row, tick it here, note the evidence (test file / probe status).
 
 - **#50 sanitize / simple_format / strip_tags (Nokogiri)** — permanent;
   workaround documented in `RAILS_FEATURES.md` ("Living without Nokogiri").
-- **#90 `around_action`** — shim SymbolicTransport skips `:around` filters.
-  Either becomes a shim project (replay-as-wrap execution) or stays a
-  documented exclusion. Decided by the [DECIDE] outcome above.
+- **#90 `around_action`** — RESOLVED 2026-10-22, moved to the ✅ list: the
+  shim now replays symbolic `:around` filters wrap-style (`SymbolicTransport#around`
+  + wrap-chain `Registry#replay`; see the row-90 flip in `RAILS_FEATURES.md`).
+  Lambda/Proc around filters remain fail-safe skipped (un-shareable Procs).
 - **Direct-upload JS client** (#40) — app deliberately ships no JS tags.
 - **Browser-based system tests** (#56) — rack_test only; wiring
   selenium + real browser is orthogonal to Ractors.

@@ -7,9 +7,52 @@ class FeaturesController < ApplicationController
   # class definition) — `include` from a worker would mutate a shared
   # class and raise Ractor::UnsafeError.
   include ActionView::Helpers::TextHelper
+  # RAILS_FEATURES.md #102: dom_id / RecordIdentifier — included at boot
+  # (worker-side include would mutate the shared class).
+  include ActionView::RecordIdentifier
 
   # RAILS_FEATURES.md #92: HTTP basic auth.
   http_basic_authenticate_with name: "audit", password: "secret", only: :basic_auth
+
+  # RAILS_FEATURES.md #90: around_action wrap replay in workers. Two around
+  # filters, declared first/second. Each appends a marker to the
+  # X-Around-Order header before AND after its yield; the action appends its
+  # own marker mid-body. The final header is therefore a complete execution
+  # transcript: first-enter,second-enter,body,second-exit,first-exit —
+  # proving first-declared = outermost, body runs inside both, exits unwind
+  # inner-first. The first filter also measures elapsed action time.
+  AROUND_ORDER_HEADER = "X-Around-Order".freeze
+  around_action :around_order_first, only: :around_probe
+  around_action :around_order_second, only: :around_probe
+
+  def around_order_first
+    append_around_marker("first-enter")
+    t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    yield
+    response.headers["X-Around-Elapsed"] =
+      (Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0).round(6).to_s
+    append_around_marker("first-exit")
+  end
+
+  def around_order_second
+    append_around_marker("second-enter")
+    yield
+    append_around_marker("second-exit")
+  end
+
+  def append_around_marker(marker)
+    existing = response.headers[AROUND_ORDER_HEADER].to_s.split(",")
+    existing = [] if existing == [""]
+    response.headers[AROUND_ORDER_HEADER] = (existing + [marker]).join(",")
+  end
+
+  # RAILS_FEATURES.md #90: the wrapped action itself. `around_wrapped_ok`
+  # proves the action body ran inside the around wrappers; the full ordering
+  # is asserted via the header.
+  def around_probe
+    append_around_marker("body")
+    render json: { around_action_ok: true }
+  end
 
   # RAILS_FEATURES.md #91: conditional GET via stale? (ETag +
   # Last-Modified from the record's cache_key). stale? issues the 304
@@ -633,5 +676,77 @@ class FeaturesController < ApplicationController
       post.update!(content: params[:body])
     end
     @post = post
+  end
+
+  # RAILS_FEATURES.md #102: dom_id / RecordIdentifier round-trip in a
+  # worker (dom_id is pure Ruby — ActionView::RecordIdentifier).
+  def dom_id_probe
+    post = Post.order(:id).first
+    dom = dom_id(post)
+    new_dom = dom_id(Post.new)
+    render json: {
+      dom_id_ok: dom == "post_#{post.id}",
+      dom_class_ok: dom_class(post) == "post",
+      new_record_ok: new_dom == "new_post",
+      dom: dom
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
+  # RAILS_FEATURES.md #103: localized views — the template lookup prefers
+  # the .en variant when I18n.locale is :en. Both templates exist
+  # (localized.html.erb + localized.en.html.erb); the .en one stamps its
+  # own marker so the probe can tell which one actually rendered.
+  def localized_probe
+    @locale = I18n.locale
+  end
+
+  # RAILS_FEATURES.md #104: Turbo Frame server-side markup. The app ships
+  # no JS (and no turbo-rails gem), so this probe verifies the SERVER side
+  # only: a hand-rolled <turbo-frame id=...> wrapper around a partial
+  # collection render, plus the per-request frame src lazy-load attribute
+  # form. Turbo Frames are plain HTML — no worker-specific risk expected.
+  def turbo_frame_probe
+    @posts = Post.order(:id).limit(2)
+  end
+
+  # RAILS_FEATURES.md #95: ActionController::Live SSE. Two events are
+  # streamed through response.stream, then the stream is closed. The shim
+  # runs streaming actions INLINE in workers (shim a9059bc) — this probe
+  # verifies a Live action dispatches and streams from a worker Ractor.
+  def live_probe
+    response.headers["Content-Type"] = "text/event-stream"
+    response.stream.write("event: first\ndata: {\"n\": 1}\n\n")
+    response.stream.write("event: second\ndata: {\"n\": 2}\n\n")
+  ensure
+    response.stream.close if response.stream.respond_to?(:close)
+  end
+
+  # RAILS_FEATURES.md #109: custom ActiveJob argument serializers. The probe
+  # exercises the registry lookup + serialize → deserialize round-trip for
+  # GeoPoint through ActiveJob::Serializers (worker-side), and enqueues the
+  # probe job (the :async adapter executes it via the per-Ractor executor,
+  # landing an AuditLog row).
+  def geo_serializer_probe
+    point = GeoPoint.new(52.52, 13.405)
+
+    # The custom serializer must be found in the registry (worker-side) and
+    # round-trip through serialize → deserialize.
+    serialized = ActiveJob::Serializers.serialize(point)
+    round_trip = ActiveJob::Arguments.deserialize(ActiveJob::Arguments.serialize([point])).first
+
+    stamp = Time.current.to_i
+    job = GeoProbeJob.perform_later(GeoPoint.new(stamp.to_f / 1000, 0.0))
+
+    render json: {
+      serializer_lookup_ok: serialized.is_a?(Hash) && serialized[ActiveJob::Serializers::OBJECT_SERIALIZER_KEY] == "GeoPointSerializer",
+      serialized_shape_ok: serialized["lat"] == 52.52,
+      round_trip_ok: round_trip.is_a?(GeoPoint) && round_trip.lat == 52.52 && round_trip.lng == 13.405,
+      enqueue_ok: job.present?,
+      serialized: serialized
+    }
+  rescue => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
   end
 end
