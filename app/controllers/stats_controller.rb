@@ -294,6 +294,58 @@ class StatsController < ApplicationController
     }, status: 500
   end
 
+  # RAILS_FEATURES.md #110: Solid Queue adapter in a worker. `perform_later`
+  # from THIS worker Ractor writes the solid_queue_jobs row (DB write path);
+  # the job performs later in the separate dispatcher process (bin/jobs).
+  def solid_queue_probe
+    stamp = Time.current.to_i
+    job = SolidQueueProbeJob.perform_later(stamp)
+
+    render json: {
+      enqueued: job.present?,
+      adapter: job.class.queue_adapter.class.name,
+      solid_queue_rows: SolidQueue::Job.count
+    }
+  rescue => e
+    render json: {
+      error: "#{e.class}: #{e.message}",
+      backtrace: e.backtrace.first(5)
+    }, status: 500
+  end
+
+  # RAILS_FEATURES.md #128: the custom ENCRYPTED storage service. Uploads  # plaintext through ActiveStorage::Service::EncryptedDiskService
+  # (AES-256-GCM at rest), reads the raw on-disk bytes to prove the file is
+  # NOT the plaintext, and downloads through the service to prove the
+  # round-trip — all in the caller's Ractor.
+  def encrypted_storage_probe
+    service = ActiveStorage::Blob.services.fetch(:test_encrypted)
+    stamp = Time.current.to_i
+    key = "encrypted-probe/#{stamp}"
+    plaintext = "secret bytes #{stamp}"
+
+    service.upload(key, StringIO.new(plaintext))
+
+    # The raw on-disk file must differ from the plaintext (encrypted at
+    # rest) and must NOT contain the plaintext marker.
+    raw = File.binread(service.path_for(key))
+    raw_clean = raw.dup.force_encoding(Encoding::UTF_8)
+
+    downloaded = service.download(key)
+
+    render json: {
+      service_ok: service.is_a?(ActiveStorage::Service::EncryptedDiskService),
+      encrypted_at_rest_ok: raw.bytesize > plaintext.bytesize && !raw_clean.include?(plaintext),
+      round_trip_ok: downloaded == plaintext,
+      plaintext_bytes: plaintext.bytesize,
+      raw_bytes: raw.bytesize
+    }
+  rescue => e
+    render json: {
+      error: "#{e.class}: #{e.message}",
+      backtrace: e.backtrace.first(5)
+    }, status: 500
+  end
+
   # Probe for Action Cable via Solid Cable (RAILS_FEATURES.md #122-124).
   # Broadcasts from THIS worker Ractor — the publish side of the pubsub —
   # then polls solid_cable_messages for the row (a broadcast is a DB INSERT;

@@ -6,6 +6,11 @@ GIT
     ractor-rails-shim (0.4.2)
       activesupport (>= 8.1)
 
+PATH
+  remote: engines/audit_engine
+  specs:
+    audit_engine (0.1.0)
+
 GEM
   remote: https://rubygems.org/
   specs:
@@ -463,6 +468,7 @@ PLATFORMS
   x86_64-linux-musl
 
 DEPENDENCIES
+  audit_engine!
   bootsnap
   brakeman (~> 8.1)
   bundler-audit
@@ -512,6 +518,7 @@ CHECKSUMS
   async-pool (0.11.2) sha256=0a43a17b02b04d9c451b7d12fafa9a50e55dc6dd00d4369aca00433f16a7e3ed
   async-service (0.24.1) sha256=3ee313fa2d6c1427ffac68f42f272889c496fa1088cf1432b1e7a5f5bff56b06
   async-utilization (0.4.0) sha256=4da53cb1733a12c9cf70ff22bd37d29c10fa9162a03ddb10f34e12acd171fe32
+  audit_engine (0.1.0)
   bake (0.25.0) sha256=a47bdc6a26addc048827debc36fe27bb4d5d71ac2958ad910b5386e9baf49869
   base64 (0.3.0) sha256=27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b
   bcrypt (3.1.22) sha256=1f0072e88c2d705d94aff7f2c5cb02eb3f1ec4b8368671e19112527489f29032

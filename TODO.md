@@ -320,12 +320,14 @@ row, tick it here, note the evidence (test file / probe status).
     class ivars now frozen at prepare time (shim freezer patch —
     `patches/active_job.rb`). Initializer requires the serializer files
     explicitly (initializers run before Zeitwerk autoload).
-56. **[CHECK] Solid Queue (row 110) — bundle + run dispatcher as a second
-    process; enqueue from a worker; assert job performs. Biggest remaining
-    backend question.
-56. **[CHECK] Solid Queue (row 110) — bundle + run dispatcher as a second
-    process; enqueue from a worker; assert job performs. Biggest remaining
-    backend question.
+56. **[DONE ✅]** Solid Queue (row 110) — adapter set to :solid_queue in
+    production semantics (the :ractor boot). kino verified END-TO-END:
+    `perform_later` from a WORKER Ractor wrote the solid_queue_jobs row and
+    the separate `bin/jobs` dispatcher claimed + performed it (`finished_at`
+    set, the perform landed the AuditLog marker row). Found + fixed 3 shim
+    walls on the way: queue_adapter fallback capture (stateless adapters
+    freeze), SolidQueue::Batch.migrated? prewarm, and the execution models'
+    `before_create` block callback re-registered symbolically.
 57. **[DONE ✅]** Parallel testing (row 140) — `PARALLEL_WORKERS=2
     bin/rails test test/models test/controllers` → 129 runs, 0 failures.
     Processes fork (not Ractors); the earlier pg fork segfault was already
@@ -336,9 +338,15 @@ row, tick it here, note the evidence (test file / probe status).
     crashing; `bin/rails notes` runs; `generate scaffold --pretend` plans
     the full scaffold; `RAILS_ENV=production bin/rails assets:precompile`
     succeeds.
-59. **[CHECK] Engines (row 144) — mount a minimal isolated engine; probe a
-    route through it in `:ractor` mode.
-60. **[CHECK] Encrypted storage service (row 128) — optional.
+59. **[DONE ✅]** Engines (row 144) — `engines/audit_engine` path gem
+    (isolate_namespace, own routes/controller/view) mounted at
+    /audit_engine; worker GET renders the engine-owned view. Required the
+    shim precompute step warming every engine's env_config/app memos.
+60. **[DONE ✅]** Encrypted (custom) storage service (row 128) —
+    app-defined `ActiveStorage::Service::EncryptedDiskService`
+    (AES-256-GCM at rest); worker probe: upload → on-disk bytes differ from
+    (and exclude) the plaintext → download decrypts back. Service prebuilt
+    in main before the freeze (same pattern as :test_public).
 
 ## Known limitations (NOT todos)
 

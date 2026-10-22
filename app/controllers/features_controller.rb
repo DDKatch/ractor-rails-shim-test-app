@@ -279,7 +279,7 @@ class FeaturesController < ApplicationController
       discard_handlers: discard_handlers
     }
   rescue => e
-    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+    render json: { error: "#{e.class}: #{e.message}", backtrace: e.backtrace.first(8) }, status: 500
   end
 
   # RAILS_FEATURES.md #71: optimistic locking (lock_version). Rails turns it

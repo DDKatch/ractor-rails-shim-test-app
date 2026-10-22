@@ -92,6 +92,10 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # initializer (post-initialize!) builds the registry from config/
   # storage.yml; pre-build :test_public here, while it is still mutable.
   ActiveStorage::Blob.services.fetch(:test_public)
+  # Row 128: same for the custom ENCRYPTED service — pre-build it in main
+  # (while the registry is still mutable) so the worker-side fetch takes
+  # the memoized fast path.
+  ActiveStorage::Blob.services.fetch(:test_encrypted)
   # Same lazy-ivar class pattern: Blob's signed_id_verifier reader is
   # `@signed_id_verifier ||= ActiveStorage.verifier` — a worker cannot SET
   # class ivars (IsolationError), so touch it main-side before the freeze.
@@ -580,6 +584,18 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   lvp_status, lvp_headers, lvp_body = dispatch(app, "GET", "/features/live_probe", nil, nil)
   gsp_status, gsp_headers, gsp_body = dispatch(app, "GET", "/features/geo_serializer_probe", nil, nil)
 
+  # Engine probe (row 144): the isolated audit_engine mounted at
+  # /audit_engine — its controller + view are engine-owned.
+  aep_status, aep_headers, aep_body = dispatch(app, "GET", "/audit_engine", nil, nil)
+
+  # Encrypted storage probe (row 128): the custom AES-256-GCM disk service
+  # — upload, encrypted-at-rest check, download round-trip, in a worker.
+  esp_status, esp_headers, esp_body = dispatch(app, "GET", "/encrypted_storage_probe", nil, nil)
+
+  # Solid Queue probe (row 110): perform_later from a worker with the
+  # :solid_queue adapter — a solid_queue_jobs DB write from the worker.
+  sqp_status, sqp_headers, sqp_body = dispatch(app, "GET", "/solid_queue_probe", nil, nil)
+
   # Error reporter probe (row 133): Rails.error.handle swallows + reports;
   # Rails.error.record re-raises — from a worker Ractor.
   err_status, err_headers, err_body = dispatch(app, "GET", "/features/error_probe", nil, nil)
@@ -739,6 +755,9 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/turbo_frame_probe" => [tfp_status, tfp_headers, tfp_body],
     "GET /features/live_probe" => [lvp_status, lvp_headers, lvp_body],
     "GET /features/geo_serializer_probe" => [gsp_status, gsp_headers, gsp_body],
+    "GET /audit_engine" => [aep_status, aep_headers, aep_body],
+    "GET /encrypted_storage_probe" => [esp_status, esp_headers, esp_body],
+    "GET /solid_queue_probe" => [sqp_status, sqp_headers, sqp_body],
     "GET /features/error_probe" => [err_status, err_headers, err_body],
     "GET /storage_probe" => [stp_status, stp_headers, stp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
@@ -1060,7 +1079,7 @@ else
       jrp_status = results[jrp_key][0]
       jrp_body = results[jrp_key][2]
       assert_equal 200, jrp_status,
-                   "GET /job_resilience_probe must return 200 in a worker Ractor (got #{jrp_status}: #{jrp_body[0..200]})"
+                   "GET /job_resilience_probe must return 200 in a worker Ractor (got #{jrp_status}: #{jrp_body.lines[0, 6].join})"
       jrp_parsed = JSON.parse(jrp_body)
       assert jrp_parsed["enqueued"], "GET /job_resilience_probe must enqueue from a worker"
       assert_equal "low", jrp_parsed["queue"],
@@ -1357,6 +1376,42 @@ else
       assert gsp_parsed["serialized_shape_ok"], "GeoPoint must serialize via the custom serializer in a worker (row 109)"
       assert gsp_parsed["round_trip_ok"], "GeoPoint must deserialize back through ActiveJob::Arguments in a worker (row 109)"
       assert gsp_parsed["enqueue_ok"], "GeoProbeJob must enqueue with a custom-serialized arg in a worker (row 109)"
+
+      # --- Row 144: the isolated engine in a worker ---
+      aep_key = "GET /audit_engine"
+      aep_status = results[aep_key][0]
+      aep_body = results[aep_key][2]
+      assert_equal 200, aep_status,
+                   "GET /audit_engine must return 200 in a worker Ractor (got #{aep_status}: #{aep_body[0..300]})"
+      assert aep_body.include?('data-engine="audit_engine"'),
+             "the engine's own view must render in a worker (row 144; got #{aep_body[0..200]})"
+      assert aep_body.include?("engine-owned view path") || aep_body.include?("isolated engine"),
+             "the engine view content must come from the engine's view path (row 144)"
+
+      # --- Row 128: the custom encrypted storage service in a worker ---
+      esp_key = "GET /encrypted_storage_probe"
+      esp_status = results[esp_key][0]
+      esp_body = results[esp_key][2]
+      assert_equal 200, esp_status,
+                   "GET /encrypted_storage_probe must return 200 in a worker Ractor (got #{esp_status}: #{esp_body[0..300]})"
+      esp_parsed = JSON.parse(esp_body)
+      assert esp_parsed["service_ok"], "the custom encrypted service must resolve in a worker (row 128)"
+      assert esp_parsed["encrypted_at_rest_ok"],
+             "the on-disk bytes must be encrypted (larger than + not containing the plaintext) (row 128)"
+      assert esp_parsed["round_trip_ok"], "download must decrypt back to the plaintext in a worker (row 128)"
+
+      # --- Row 110: Solid Queue enqueue from a worker ---
+      sqp_key = "GET /solid_queue_probe"
+      sqp_status = results[sqp_key][0]
+      sqp_body = results[sqp_key][2]
+      assert_equal 200, sqp_status,
+                   "GET /solid_queue_probe must return 200 in a worker Ractor (got #{sqp_status}: #{sqp_body[0..300]})"
+      sqp_parsed = JSON.parse(sqp_body)
+      assert sqp_parsed["enqueued"], "SolidQueueProbeJob must enqueue from a worker (row 110)"
+      assert sqp_parsed["adapter"].to_s.end_with?("SolidQueueAdapter"),
+             "the adapter must be solid_queue in the :ractor boot (row 110; got #{sqp_parsed["adapter"].inspect})"
+      assert sqp_parsed["solid_queue_rows"] >= 1,
+             "the enqueue must write a solid_queue_jobs row (row 110; got #{sqp_parsed["solid_queue_rows"]})"
 
       # --- Row 133: the error reporter in a worker ---
       err_key = "GET /features/error_probe"

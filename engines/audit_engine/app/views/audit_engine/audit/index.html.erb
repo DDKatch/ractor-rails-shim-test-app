@@ -1,0 +1,6 @@
+<%# RAILS_FEATURES.md #144: engine-owned view — rendered from the engine's
+    own view path (NOT the host app's app/views). The engine-probe marker
+    (data-engine="audit_engine") is asserted by the tests. %>
+<div id="audit-engine-probe" data-engine="audit_engine" data-engine-name="<%= @engine_name %>">
+  audit engine index rendered from the isolated engine's view path
+</div>

@@ -94,8 +94,15 @@ Rails.application.configure do
   # Skip DNS rebinding protection for the default health check endpoint.
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 
-  # --- Mail delivery (manual testing in `kino -m ractor` mode) ---
-  # Point ActionMailer at MailCatcher so welcome emails are captured and
+# --- RAILS_FEATURES.md #110: Solid Queue adapter (production semantics) ---
+# The :ractor kino boots with RAILS_ENV=production, so this applies to the
+# frozen graph: `perform_later` from worker Ractors is a DB write into the
+# solid_queue_* tables. Job EXECUTION runs in the separate dispatcher
+# process (`bin/jobs`), which boots the same app threaded in the MAIN
+# Ractor — jobs never perform inside worker Ractors.
+config.active_job.queue_adapter = :solid_queue
+
+  # --- Mail delivery (manual testing in `kino -m ractor` mode) ---  # Point ActionMailer at MailCatcher so welcome emails are captured and
   # inspectable at http://127.0.0.1:1080 instead of hitting a real SMTP server.
   # NOTE: delivery from a *worker Ractor* is currently a known limitation
   # (ActionMailer::Base#config resolves to nil in the worker, so mailer

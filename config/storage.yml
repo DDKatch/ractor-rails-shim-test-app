@@ -9,3 +9,14 @@ test_public:
   service: Disk
   root: <%= Rails.root.join("tmp/storage_public") %>
   public: true
+
+# RAILS_FEATURES.md row 128: an ENCRYPTED (custom) service — an app-defined
+# ActiveStorage::Service::EncryptedDiskService (AES-256-GCM at rest). The
+# class lives in lib/active_storage/service/ (required at boot via
+# config/initializers/encrypted_storage.rb) so the service Configurator's
+# `require "active_storage/service/encrypted_disk_service"` resolves and,
+# on workers, no-ops (already loaded).
+test_encrypted:
+  service: EncryptedDisk
+  root: <%= Rails.root.join("tmp/storage_encrypted") %>
+

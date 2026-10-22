@@ -7,6 +7,9 @@ source "https://rubygems.org"
 # Cut a release and revert to `gem "ractor-rails-shim", "~> 0.4"` before
 # publishing the test-app repo.
 gem "ractor-rails-shim", github: "DDKatch/ractor-rails-shim", branch: "main"
+# RAILS_FEATURES.md #144: minimal isolated engine (path gem), mounted at
+# /audit_engine in config/routes.rb.
+gem "audit_engine", path: "engines/audit_engine"
 gem "rails", "~> 8.1.3"
 gem "propshaft"
 gem "tailwindcss-rails"
