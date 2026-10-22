@@ -326,10 +326,16 @@ row, tick it here, note the evidence (test file / probe status).
 56. **[CHECK] Solid Queue (row 110) — bundle + run dispatcher as a second
     process; enqueue from a worker; assert job performs. Biggest remaining
     backend question.
-57. **[CHECK] Parallel testing (row 140) — `bin/rails test` with
-    `PARALLEL_WORKERS=2` (processes fork, not Ractors — should be safe).
-58. **[CHECK] CLI niceties (rows 141–143) — `rails runner "puts 1"`,
-    `rails dbconsole` smoke, `assets:precompile` once.
+57. **[DONE ✅]** Parallel testing (row 140) — `PARALLEL_WORKERS=2
+    bin/rails test test/models test/controllers` → 129 runs, 0 failures.
+    Processes fork (not Ractors); the earlier pg fork segfault was already
+    resolved by `gssencmode: disable` in database.yml.
+58. **[DONE ✅]** CLI niceties (rows 141–143) — `bin/rails runner` prints;
+    `echo "SELECT 1;" | bin/rails dbconsole` psql round-trips;
+    `bin/rails destroy migration` on a non-existent name no-ops without
+    crashing; `bin/rails notes` runs; `generate scaffold --pretend` plans
+    the full scaffold; `RAILS_ENV=production bin/rails assets:precompile`
+    succeeds.
 59. **[CHECK] Engines (row 144) — mount a minimal isolated engine; probe a
     route through it in `:ractor` mode.
 60. **[CHECK] Encrypted storage service (row 128) — optional.
