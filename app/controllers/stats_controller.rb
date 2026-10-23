@@ -372,6 +372,34 @@ class StatsController < ApplicationController
     render json: { err: e.class.name, msg: e.message[0, 200], svc: (b&.service_name rescue nil) }
   end
 
+  # RAILS_FEATURES.md #81: multiple databases. `AuditEntry` lives on the
+  # `secondary` database (connects_to writing/reading roles); `Post` stays on
+  # the primary. The probe proves, inside a worker Ractor: a write + read on
+  # the secondary pool, a primary read in the same request, and a
+  # `connected_to(role: :reading)` block.
+  def multi_db_probe
+    AuditEntry.where(source: "ractor_probe").delete_all
+    entry = AuditEntry.create!(message: "written-in-worker", source: "ractor_probe")
+    secondary_db = AuditEntry.connection_db_config.database
+    primary_db = Post.connection_db_config.database
+    # `connected_to` must be called on ActiveRecord::Base or an abstract
+    # class (Rails raises on a concrete model), so switch roles through the
+    # abstract base and query the model inside the block.
+    reading_count = SecondaryRecord.connected_to(role: :reading) do
+      AuditEntry.where(source: "ractor_probe").count
+    end
+    render json: {
+      secondary_db: secondary_db,
+      primary_db: primary_db,
+      distinct: secondary_db != primary_db,
+      persisted: AuditEntry.find_by(id: entry.id)&.message,
+      primary_count: Post.count,
+      reading_count: reading_count
+    }
+  rescue StandardError => e
+    render json: { error: "#{e.class}: #{e.message}" }, status: 500
+  end
+
   def cable_probe
     before = SolidCable::Message.count
     max_before = SolidCable::Message.maximum(:id) || 0

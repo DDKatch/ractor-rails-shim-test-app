@@ -135,7 +135,9 @@ row, tick it here, note the evidence (test file / probe status).
     DB without `connects_to` (pool spec-name rationale in config/cable.yml).
     Worker broadcast verified in the kino (`GET /cable_probe` 200, persisted
     row; shim gained per-Ractor cable server + SolidCable configuration).
-    Connection semantics (row 122) stay main-Ractor-scope.
+    Connection semantics (row 122) stay main-Ractor-scope; covered in main
+    mode by `test/connections/application_cable_connection_test.rb`
+    (identifier from the encrypted cookie + rejected connection).
 26. **[DONE] Action Mailbox (rows 117–119) — `ApplicationMailbox` routes
     `:all => :inbox`; `InboxMailbox` records a polymorphic AuditLog;
     `test/mailboxes/inbox_mailbox_test.rb` uses
@@ -205,17 +207,21 @@ row, tick it here, note the evidence (test file / probe status).
     `/features/audit_archive_probe` in a worker: both queries run
     worker-side (plus the row-83 jsonb on AuditArchive). Ranges/uuid PK
     not exercised — single-PK kino (documented in the row note).
-11. **[DONE ✅ (row 80) / DEFERRED (row 81)]** Composite PKs / multiple
+11. **[DONE ✅ (rows 80 + 81)]** Composite PKs / multiple
     DBs — row 80 done: `region_stats` with PK `(region, year)`,
     `self.primary_key = [:region, :year]`; `region_stat_test` (main) +
     kino `/features/composite_pk_probe` (tuple find, PK-routed update,
     duplicate-PK `RecordNotUnique`) in a worker. Migration gotcha: `id:
     false` + a composite `primary_key:` array silently drops the PK —
-    the array alone implies no id column. Row 81 (multiple DBs) is
-    deferred: the kino runs a single PG database, and `connects_to` +
-    `connected_to` would need a second database plus per-Ractor pool
-    replication in the shim — revisit only if a second-DB kino becomes
-    a priority.
+    the array alone implies no id column. Row 81 DONE: a real second
+    database (`*_secondary`, `db/secondary_migrate` + `migrations_paths`),
+    `SecondaryRecord` with `connects_to database: { writing: :secondary,
+    reading: :secondary }`, and `AuditEntry` on it. kino `/multi_db_probe`
+    in a worker: secondary write + re-read, a primary read in the same
+    request, and `SecondaryRecord.connected_to(role: :reading)`. Shim:
+    the worker handler now puts `primary` on the default shard (it used to
+    let the LAST config win), registers named databases for both roles, and
+    re-establishes `connects_to` model pools from a main-captured snapshot.
 12. **[DONE ✅]** Custom form builders / `fields_for` (row 97) — kino
     `/features/builder_form_probe` in a worker: `form_with builder:
     LabeledFormBuilder` renders the custom labeled-field wrapper, and a

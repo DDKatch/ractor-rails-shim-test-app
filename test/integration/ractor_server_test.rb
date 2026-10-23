@@ -662,6 +662,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # from a worker Ractor — the publish side is a DB INSERT into
   # solid_cable_messages. Must return 200 {persisted: true, msg: ...}.
   cbp_status, cbp_headers, cbp_body = dispatch(app, "GET", "/cable_probe", nil, nil)
+  mdb_status, mdb_headers, mdb_body = dispatch(app, "GET", "/multi_db_probe", nil, nil)
 
   # Solid Cache probe (TODO #27): worker-side Rails.cache.fetch miss+hit
   # against the REAL production store (:solid_cache_store, DB-backed).
@@ -811,6 +812,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /storage_probe" => [stp_status, stp_headers, stp_body],
     "GET /job_enqueue_probe" => [jep_status, jep_headers, jep_body],
     "GET /cable_probe" => [cbp_status, cbp_headers, cbp_body],
+    "GET /multi_db_probe" => [mdb_status, mdb_headers, mdb_body],
     "GET /solid_cache_probe" => [scp_status, scp_headers, scp_body],
     "GET /assoc_probe" => [asp_status, asp_headers, asp_body],
     "GET /up" => [up_status, up_headers, up_body],
@@ -1603,6 +1605,22 @@ else
                    "worker-Ractor cable broadcast must succeed (got #{cbp_status}: #{cbp_body[0..300]})"
       assert_equal true, cbp_parsed["persisted"],
                    "GET /cable_probe must report the broadcast persisted (got #{cbp_body[0..300]})"
+      # --- Row 81: multiple databases (connects_to / connected_to) ---
+      mdb_key = "GET /multi_db_probe"
+      mdb_status = results[mdb_key][0]
+      mdb_body = results[mdb_key][2]
+      assert_equal 200, mdb_status,
+                   "GET /multi_db_probe must return 200 in a worker Ractor (row 81; got #{mdb_status}: #{mdb_body[0..300]})"
+      mdb = JSON.parse(mdb_body)
+      assert mdb["distinct"],
+             "AuditEntry must resolve to a DIFFERENT database than Post (row 81; got #{mdb['secondary_db'].inspect} vs #{mdb['primary_db'].inspect})"
+      assert_equal "written-in-worker", mdb["persisted"],
+                   "a worker must persist + re-read an AuditEntry on the secondary database (row 81)"
+      assert mdb["primary_count"].to_i.positive?,
+             "the primary database must still be readable in the same worker request (row 81)"
+      assert mdb["reading_count"].to_i >= 1,
+             "connected_to(role: :reading) must read the secondary database in a worker (row 81)"
+
       assert_equal "cable_probe", cbp_parsed["channel"]
       assert_equal "worker broadcast", cbp_parsed["msg"]
       assert_equal cbp_parsed["rows_before"] + 1, cbp_parsed["rows_after"],

@@ -22,6 +22,7 @@ Rails.application.routes.draw do
   get "/mail_hooks_probe", to: "stats#mail_hooks_probe"
   get "/job_enqueue_probe", to: "stats#job_enqueue_probe"
   get "/cable_probe", to: "stats#cable_probe"
+  get "/multi_db_probe", to: "stats#multi_db_probe"
   get "/du_diag", to: "stats#du_diag"
   get "/svc_diag", to: "stats#svc_diag"
   get "/solid_cache_probe", to: "stats#solid_cache_probe"
