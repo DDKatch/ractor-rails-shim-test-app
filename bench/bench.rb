@@ -458,6 +458,19 @@ def ensure_user
   code = <<~RUBY
     email = ENV["BENCH_EMAIL"]
     digest = ENV["BENCH_DIGEST"]
+    # Posts (and their comments) reference users with a NOT NULL FK. The
+    # ractor integration test writes posts as this benchmark user, so a bare
+    # "DELETE FROM users" raises FK violations (dependent: :destroy is an AR
+    # callback, not a DB cascade). Delete the dependent rows first.
+    ActiveRecord::Base.connection.execute(<<~SQL)
+      DELETE FROM comments WHERE post_id IN (
+        SELECT id FROM posts WHERE user_id IN (
+          SELECT id FROM users WHERE email = '\#{email}'))
+    SQL
+    ActiveRecord::Base.connection.execute(<<~SQL)
+      DELETE FROM posts WHERE user_id IN (
+        SELECT id FROM users WHERE email = '\#{email}')
+    SQL
     ActiveRecord::Base.connection.execute(
       "DELETE FROM users WHERE email = '\#{email}'")
     ActiveRecord::Base.connection.execute(
