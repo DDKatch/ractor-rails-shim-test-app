@@ -1,0 +1,6 @@
+<%# RAILS_FEATURES.md #105: the .turbo_stream template-handler variant —
+    rendered with formats: [:turbo_stream]; the TurboStreamsTagBuilder builds
+    the <turbo-stream> wrapper markup around the mutation. %>
+<%= turbo_stream.append "turbo_probe_template_messages" do %>
+  <p>template-handler stream from worker: <%= @post.title.to_s[0, 24] %></p>
+<% end %>

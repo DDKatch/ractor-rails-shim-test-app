@@ -77,8 +77,9 @@ class StatsController < ApplicationController
     # Clean up any prior attachment so attached_before is deterministic
     user.avatar.purge if attached_before
 
-    # Generate key explicitly (has_secure_token uses a before_create block
-    # callback that doesn't fire in worker Ractors).
+    # Generate the key explicitly. The shim's SecureToken patch makes the
+    # has_secure_token callback worker-safe (Symbol callback), but the probe
+    # stays explicit for a deterministic key.
     key = SecureRandom.base58(ActiveStorage::Blob::MINIMUM_TOKEN_LENGTH)
 
     io = StringIO.new("ractor avatar bytes")
@@ -86,7 +87,7 @@ class StatsController < ApplicationController
       key: key,
       filename: "avatar.txt",
       content_type: "text/plain",
-      service_name: :test.to_s
+      service_name: :test_public.to_s
     )
     # unfurl computes byte_size + checksum by reading the io, then we
     # rewind and upload the file to the disk service.
@@ -353,6 +354,24 @@ class StatsController < ApplicationController
   # subscribed clients is the cable server's poller concern (main Ractor,
   # out of :ractor scope). Returns the row's payload to prove the worker's
   # message was persisted.
+  def svc_diag
+    reg = ActiveStorage::Blob.services
+    render json: {
+      keys: (reg.services.keys rescue "ERR:#{$!.class}"),
+      configs: (reg.configurations.keys rescue "ERR:#{$!.class}"),
+      const: RactorRailsShim::ACTIVE_STORAGE_DEFAULT_SERVICE
+    }
+  rescue StandardError => e
+    render json: { err: e.class.name, msg: e.message[0, 200] }
+  end
+
+  def du_diag
+    b = ActiveStorage::Blob.create_before_direct_upload!(filename: "dd.txt", byte_size: 3, checksum: "abc", content_type: "text/plain")
+    render json: { svc: b.service_name, saved: b.persisted?, key: b.key&.length }
+  rescue StandardError => e
+    render json: { err: e.class.name, msg: e.message[0, 200], svc: (b&.service_name rescue nil) }
+  end
+
   def cable_probe
     before = SolidCable::Message.count
     max_before = SolidCable::Message.maximum(:id) || 0

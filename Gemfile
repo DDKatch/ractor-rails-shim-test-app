@@ -31,6 +31,10 @@ gem "msgpack", ">= 1.7.0"
 gem "solid_cache"
 gem "solid_queue" # Rails 8 default database-backed job queue # Rails 8 default database-backed cache store
 gem "solid_cable" # Rails 8 default database-backed Action Cable pubsub (no redis dependency)
+# RAILS_FEATURES.md #105: Turbo Streams — the gem provides the
+# `turbo_stream` template handler + Broadcastable concern (server-rendered
+# stream responses and model broadcasts; no JS runtime needed server-side).
+gem "turbo-rails"
 
 gem "csv"
 

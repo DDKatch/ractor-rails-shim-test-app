@@ -1,6 +1,12 @@
 require "active_support/core_ext/integer/time"
 
 Rails.application.configure do
+  # RAILS_FEATURES.md #121/#127: the default Active Storage service for the
+  # :ractor boot's production semantics. Without it `ActiveStorage::Blob.service`
+  # is nil, so the direct-upload endpoint and the disk service URL cannot
+  # resolve a default service in workers.
+  config.active_storage.service = :test_public
+
   # Prepare the ingress controller used to receive mail
   # config.action_mailbox.ingress = :relay
 

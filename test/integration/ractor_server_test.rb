@@ -432,6 +432,47 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "&authenticity_token=#{CGI.escape(new_token.to_s)}"
   pc_status, pc_headers, pc_body = dispatch(app, "POST", "/posts", post_body, auth_cookie)
 
+  # 4b. DIRECT UPLOADS (row 121): the two real endpoints the ActiveStorage JS
+  #     client uses — POST /rails/active_storage/direct_uploads (blob creation +
+  #     signed id + upload URL) and the token-verified disk PUT that stores the
+  #     bytes. Both dispatched through worker Ractors. The parent asserts the
+  #     JSON contract, the PUT status, and a full read-back through the blob
+  #     redirect endpoint.
+  du_bytes = "direct upload bytes from worker"
+  du_checksum = Base64.strict_encode64(Digest::MD5.digest(du_bytes))
+  du_body =
+    "blob[filename]=#{CGI.escape('direct.txt')}" \
+    "&blob[content_type]=#{CGI.escape('text/plain')}" \
+    "&blob[byte_size]=#{du_bytes.bytesize}" \
+    "&blob[checksum]=#{CGI.escape(du_checksum)}" \
+    "&authenticity_token=#{CGI.escape(new_token.to_s)}"
+  du_status, du_headers, du_body_resp =
+    dispatch(app, "POST", "/rails/active_storage/direct_uploads", du_body, auth_cookie)
+  du_json = (JSON.parse(du_body_resp) rescue {})
+  du_url = du_json.dig("direct_upload", "url").to_s
+  du_path = du_url.sub(%r{\Ahttps?://[^/]+}, "")
+  du_put_headers_in = { "HTTP_X_CSRF_TOKEN" => new_token.to_s }.freeze
+  du_put_status, du_put_headers, du_put_body =
+    dispatch(app, "PUT", du_path, du_bytes, auth_cookie, du_put_headers_in, content_type: "text/plain")
+
+  du_signed_id = du_json["signed_id"].to_s
+  du_redirect_status, du_redirect_headers, du_redirect_body = [nil, {}, ""]
+  du_service_status, du_service_body = [nil, ""]
+  if du_signed_id.present?
+    du_redirect_status, du_redirect_headers, du_redirect_body =
+      dispatch(app, "GET", "/rails/active_storage/blobs/redirect/#{CGI.escape(du_signed_id)}/direct.txt", nil, auth_cookie)
+    du_location = (du_redirect_headers["location"] || du_redirect_headers["Location"]).to_s
+    if du_location.present?
+      du_service_path = du_location.sub(%r{\Ahttps?://[^/]+}, "")
+      du_service_status, _du_service_headers, du_service_body =
+        dispatch(app, "GET", du_service_path, nil, auth_cookie)
+    end
+  end
+
+  du_blob_count = conn.select_value(
+    "SELECT count(*) FROM active_storage_blobs WHERE filename = 'direct.txt'"
+  ).to_i
+
   # 5. POST /posts with a BAD CSRF token -> 422 (proves validation REJECTS a
   #    forged token in a worker Ractor).
   bad_body =
@@ -583,6 +624,12 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   tfp_status, tfp_headers, tfp_body = dispatch(app, "GET", "/features/turbo_frame_probe", nil, nil)
   lvp_status, lvp_headers, lvp_body = dispatch(app, "GET", "/features/live_probe", nil, nil)
   gsp_status, gsp_headers, gsp_body = dispatch(app, "GET", "/features/geo_serializer_probe", nil, nil)
+
+  # Turbo Streams probes (row 105): server-rendered stream response + the
+  # .turbo_stream template handler, both from workers (turbo-rails adopted).
+  tsp_status, tsp_headers, tsp_body = dispatch(app, "GET", "/features/turbo_stream_probe", nil, nil)
+  tstp_status, tstp_headers, tstp_body = dispatch(app, "GET", "/features/turbo_stream_template_probe", nil, nil)
+  rte_status, rte_headers, rte_body = dispatch(app, "GET", "/features/rich_text_embed_probe", nil, nil)
 
   # Engine probe (row 144): the isolated audit_engine mounted at
   # /audit_engine — its controller + view are engine-owned.
@@ -755,6 +802,8 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/turbo_frame_probe" => [tfp_status, tfp_headers, tfp_body],
     "GET /features/live_probe" => [lvp_status, lvp_headers, lvp_body],
     "GET /features/geo_serializer_probe" => [gsp_status, gsp_headers, gsp_body],
+    "GET /features/turbo_stream_probe" => [tsp_status, tsp_headers, tsp_body],
+    "GET /features/turbo_stream_template_probe" => [tstp_status, tstp_headers, tstp_body],
     "GET /audit_engine" => [aep_status, aep_headers, aep_body],
     "GET /encrypted_storage_probe" => [esp_status, esp_headers, esp_body],
     "GET /solid_queue_probe" => [sqp_status, sqp_headers, sqp_body],
@@ -785,6 +834,12 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/rich_text (write)" => [rt_write_status, rt_write_headers, rt_write_body],
     "POST /users/sign_in" => [si_status, si_headers, si_body],
     "POST /posts (valid token)" => [pc_status, pc_headers, pc_body],
+    "POST /rails/active_storage/direct_uploads" => [du_status, du_headers, du_body_resp],
+    "PUT direct_upload disk" => [du_put_status, du_put_headers, du_put_body],
+    "GET blob redirect (direct)" => [du_redirect_status, du_redirect_headers, du_redirect_body],
+    "GET blob service url (direct)" => [du_service_status, {}, du_service_body],
+    "GET /features/rich_text_embed_probe" => [rte_status, rte_headers, rte_body],
+    "direct_upload blob count" => [du_blob_count, nil, ""],
     "POST /posts (bad token)" => [bad_status, bad_headers, bad_body],
     "DELETE /users/sign_out" => [so_status, so_headers, so_body],
     "GET /posts/new (signed-out)" => [dead_status, dead_headers, dead_body],
@@ -906,7 +961,7 @@ else
       # in the worker Ractor (unshareable-Proc framework filters like
       # autosave are skipped, app callbacks run).
       assert_equal 302, results["POST /posts (valid token)"][0],
-                   "POST /posts with a valid CSRF token must redirect (302) after creating the post"
+                   "POST /posts with a valid CSRF token must redirect (302) after creating the post (body: #{results["POST /posts (valid token)"][2].to_s[0, 350]})"
       assert_equal "Ractor Create Proof", data["created_db_title"],
                    "before_save :normalize_title must titleize the title in the worker Ractor"
 
@@ -1376,6 +1431,66 @@ else
       assert gsp_parsed["serialized_shape_ok"], "GeoPoint must serialize via the custom serializer in a worker (row 109)"
       assert gsp_parsed["round_trip_ok"], "GeoPoint must deserialize back through ActiveJob::Arguments in a worker (row 109)"
       assert gsp_parsed["enqueue_ok"], "GeoProbeJob must enqueue with a custom-serialized arg in a worker (row 109)"
+
+      # --- Row 105: Turbo Streams (turbo-rails) in a worker ---
+      tsp_key = "GET /features/turbo_stream_probe"
+      tsp_status = results[tsp_key][0]
+      tsp_body = results[tsp_key][2]
+      assert_equal 200, tsp_status,
+                   "GET /turbo_stream_probe must return 200 in a worker Ractor (got #{tsp_status}: #{tsp_body[0..300]})"
+      assert tsp_body.include?('<turbo-stream action="append" target="turbo_probe_messages">'),
+             "the server-rendered turbo-stream wrapper must be present in a worker (row 105)"
+      assert tsp_body.include?("worker stream payload"),
+             "the stream template content must render in a worker (row 105)"
+      assert tsp_body.include?("broadcast_enqueued: true"),
+             "broadcast_append_later_to must enqueue Turbo::Streams::ActionBroadcastJob in a worker (row 105)"
+      tsp_ct = results[tsp_key][1].values.find { |v| v.to_s.include?("vnd.turbo-stream") }
+      refute_nil tsp_ct, "the stream response must carry the text/vnd.turbo-stream.html content type (row 105)"
+
+      tstp_key = "GET /features/turbo_stream_template_probe"
+      tstp_status = results[tstp_key][0]
+      tstp_body = results[tstp_key][2]
+      assert_equal 200, tstp_status,
+                   "GET /turbo_stream_template_probe must return 200 in a worker Ractor (got #{tstp_status}: #{tstp_body[0..300]})"
+      assert tstp_body.include?('<turbo-stream action="append" target="turbo_probe_template_messages">'),
+             "the .turbo_stream.erb template handler must render in a worker (row 105)"
+      assert tstp_body.include?("template-handler stream from worker"),
+             "the template-handler stream content must render in a worker (row 105)"
+
+      # --- Row 121: rich text embeds + direct uploads in a worker ---
+      rte_key = "GET /features/rich_text_embed_probe"
+      rte_status = results[rte_key][0]
+      rte_body = results[rte_key][2]
+      assert_equal 200, rte_status,
+                   "GET /rich_text_embed_probe must return 200 in a worker Ractor (got #{rte_status}: #{rte_body[0..300]})"
+      rte_parsed = JSON.parse(rte_body)
+      assert rte_parsed["rich_text_area_ok"],
+             "rich_text_area (Trix form helper) must render in a worker (row 121; #{rte_parsed['rich_text_area_error'].inspect})"
+      assert_equal false, rte_parsed["embed_parse_ok"],
+                   "attachment parsing must hit the documented Nokogiri wall in a worker (row 121)"
+      assert rte_parsed["embed_parse_wall"].to_s.include?("Ractor"),
+             "the embed parse wall must be a Ractor isolation error (row 121; got #{rte_parsed['embed_parse_wall'].inspect})"
+
+      du_key = "POST /rails/active_storage/direct_uploads"
+      du_status = results[du_key][0]
+      du_resp = results[du_key][2]
+      assert_equal 200, du_status,
+                   "POST /rails/active_storage/direct_uploads must return 200 in a worker (row 121; got #{du_status}: #{du_resp[0..300]})"
+      du_parsed = JSON.parse(du_resp)
+      assert du_parsed["signed_id"].to_s.present?,
+             "direct_upload must return a signed blob id (row 121)"
+      assert du_parsed.dig("direct_upload", "url").to_s.present?,
+             "direct_upload must return a service upload URL (row 121)"
+      assert_includes [200, 204], results["PUT direct_upload disk"][0],
+                      "the disk PUT for the direct upload must succeed in a worker (row 121; got #{results['PUT direct_upload disk'][0]})"
+      assert_equal 302, results["GET blob redirect (direct)"][0],
+                   "the uploaded blob must resolve through the redirect endpoint (row 121)"
+      assert_equal 200, results["GET blob service url (direct)"][0],
+                   "the stored bytes must be downloadable from the service URL (row 121)"
+      assert_equal "direct upload bytes from worker", results["GET blob service url (direct)"][2],
+                   "the direct-uploaded bytes must round-trip through the service (row 121)"
+      assert results["direct_upload blob count"][0].to_i >= 1,
+             "the direct upload must persist an active_storage_blobs row (row 121)"
 
       # --- Row 144: the isolated engine in a worker ---
       aep_key = "GET /audit_engine"

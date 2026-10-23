@@ -711,6 +711,89 @@ class FeaturesController < ApplicationController
     @posts = Post.order(:id).limit(2)
   end
 
+  # RAILS_FEATURES.md #121: rich text embeds / direct uploads. Two halves:
+  # 1. `rich_text_area` (the Trix editor form helper) renders in a worker —
+  #    pure tag building, no HTML parsing.
+  # 2. Embed PARSING (`Content#attachables` / `Attachment#to_html`) needs
+  #    Nokogiri — the permanent worker wall (#50) — the probe reports the
+  #    raised class/message so the ractor test can pin the documented limit.
+  # The direct-upload half is exercised through the real
+  # /rails/active_storage/direct_upload + disk PUT endpoints in
+  # ractor_server_test.rb.
+  def rich_text_embed_probe
+    post = Post.order(:id).first
+    area_ok = false
+    area_error = nil
+    begin
+      builder = ActionView::Helpers::FormBuilder.new("post", post, view_context, {})
+      area_html = builder.rich_text_area(:content).to_s
+      area_ok = area_html.include?("<trix-editor") && area_html.include?('name="post[content]"')
+    rescue StandardError => e
+      area_error = "#{e.class}: #{e.message[0, 160]}"
+    end
+
+    blob = ActiveStorage::Blob.new(
+      key: SecureRandom.base58(ActiveStorage::Blob::MINIMUM_TOKEN_LENGTH),
+      filename: "embed.txt",
+      content_type: "text/plain",
+      service_name: "test_public"
+    )
+    io = StringIO.new("embed file bytes")
+    blob.unfurl(io)
+    io.rewind
+    blob.upload_without_unfurling(io)
+    blob.save!
+
+    probe_html = %(<action-text-attachment sgid="#{blob.signed_id}" filename="embed.txt" content-type="text/plain"></action-text-attachment>)
+    parse_ok = false
+    parse_wall = nil
+    begin
+      attachables = ActionText::Content.new(probe_html).attachables
+      parse_ok = attachables.size == 1 && attachables.first.is_a?(ActiveStorage::Blob)
+    rescue StandardError, Ractor::Error => e
+      parse_wall = "#{e.class}: #{e.message[0, 160]}"
+    end
+
+    render json: {
+      rich_text_area_ok: area_ok,
+      rich_text_area_error: area_error,
+      embed_parse_ok: parse_ok,
+      embed_parse_wall: parse_wall,
+      blob_saved: blob.persisted?
+    }
+  end
+
+  # RAILS_FEATURES.md #105: Turbo Streams — the turbo-rails gem, adopted for
+  # real. Two server-side paths exercised in a worker:
+  # 1. A server-rendered stream RESPONSE (render turbo_stream: ... — the
+  #    TurboStreamsTagBuilder wraps each mutation in
+  #    <turbo-stream action=... target=...><template> markup; the response
+  #    content type is text/vnd.turbo-stream.html).
+  # 2. A model BROADCAST via Turbo::Broadcastable: broadcast_append_later_to
+  #    enqueues Turbo::Streams::ActionBroadcastJob (Solid Queue in the :ractor
+  #    boot's production semantics) — the dispatcher then renders the posts
+  #    partial + broadcasts it through ActionCable (Solid Cable). The probe
+  #    reports the enqueue delta; the dispatcher-side performance is verified
+  #    separately (solid_cable::messages row + solid_queue_jobs finished_at).
+  def turbo_stream_probe
+    post = Post.order(:id).first
+    enqueue_before = SolidQueue::Job.where(class_name: "Turbo::Streams::ActionBroadcastJob").count
+    post&.broadcast_append_later_to("turbo_probe_stream")
+    enqueue_after = SolidQueue::Job.where(class_name: "Turbo::Streams::ActionBroadcastJob").count
+
+    render turbo_stream: [
+      turbo_stream.append("turbo_probe_messages", "worker stream payload #{Time.current.to_i}"),
+      turbo_stream.append("turbo_probe_meta", "broadcast_enqueued: #{enqueue_after > enqueue_before}")
+    ]
+  end
+
+  # Same feature, the template-handler path: a `.turbo_stream.erb` template
+  # rendered with formats: [:turbo_stream] (mime registered by turbo-rails).
+  def turbo_stream_template_probe
+    @post = Post.order(:id).last
+    render :turbo_stream_template, formats: [:turbo_stream]
+  end
+
   # RAILS_FEATURES.md #95: ActionController::Live SSE. Two events are
   # streamed through response.stream, then the stream is closed. The shim
   # runs streaming actions INLINE in workers (shim a9059bc) — this probe

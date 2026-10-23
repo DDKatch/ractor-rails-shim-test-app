@@ -292,13 +292,22 @@ row, tick it here, note the evidence (test file / probe status).
 
 ## P3 — niche / low priority
 
-51. **[DONE ✅ (row 104) / row 105 PENDING]** Turbo Frames / Streams
+51. **[DONE ✅ (rows 104 + 105)]** Turbo Frames / Streams
     server-side — row 104 done: `/features/turbo_frame_probe` renders
     hand-rolled `<turbo-frame>` wrappers (eager collection around the
     `posts/post` partial + a lazy `src` frame) in a worker; asserted in
-    `ractor_server_test.rb`. Row 105 (turbo_stream responses) stays
-    pending: it needs the `turbo-rails` gem's template handler — a gem-
-    adoption decision, not a probe.
+    `ractor_server_test.rb`. Row 105 DONE: turbo-rails adopted — worker
+    probes for `render turbo_stream:` (content type + `<turbo-stream>`
+    markup), the `.turbo_stream.erb` handler, and a model broadcast whose
+    `Turbo::Streams::ActionBroadcastJob` the `bin/jobs` dispatcher performs
+    (solid_cable message row). Shim walls fixed: thread_mattr macro patch,
+    turbo_stream renderer def, proc-layout registry, initialize-kind replay.
+61. **[DONE ✅]** Rich text embeds / direct uploads (row 121) —
+    `rich_text_area` renders in a worker; the real direct-upload endpoint
+    cycle (POST direct_uploads → signed id + disk URL → disk PUT → blob
+    redirect → service URL bytes) runs in workers. Embed PARSING
+    (`Content#attachables`) hits the Nokogiri wall (row 50) — main-mode
+    only, documented in RAILS_FEATURES row 121.
 52. **[DONE ✅]** `dom_id` (row 102) — `/features/dom_id_probe` in a worker:
     `dom_id(record)`, `dom_class`, `dom_id(new)` all round-trip.
     `ActionView::RecordIdentifier` included at boot on
