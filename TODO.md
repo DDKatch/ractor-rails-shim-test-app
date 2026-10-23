@@ -114,7 +114,10 @@ row, tick it here, note the evidence (test file / probe status).
     an empty list, so main-registered hooks silently never fired).
 21. **[DONE ✅]** AS `CurrentAttributes` (row 129) — set `Current.user` in a
     before_action, read in a worker-rendered view; verify reset semantics
-    (per-Ractor? per-thread?) in kino.
+    (per-Ractor? per-thread?) in kino. Verified: `/features/current` in a
+    worker returns `Current.request_id`, and a SECOND request gets a different
+    id — state is reset between worker requests (asserted in
+    ractor_server_test.rb).
 22. **[DONE ✅]** Time zones (row 131) — `config.time_zone = "Europe/Berlin"`
     verified worker-side via `/durations_probe` zone flags: `Time.zone`
     name, AR timestamp conversion, `Time.use_zone` round-trip (shim

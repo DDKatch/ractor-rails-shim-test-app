@@ -742,6 +742,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
   # CurrentAttributes (#129): request_id set by a before_action, read back by
   # the action — per-request state must work in a worker Ractor.
   ca_status, ca_headers, ca_body = dispatch(app, "GET", "/features/current", nil, nil)
+  ca2_status, ca2_headers, ca2_body = dispatch(app, "GET", "/features/current", nil, nil)
 
   # HTTP basic auth (#92): without credentials -> 401; with them -> 200.
   ba401_status, ba401_headers, ba401_body = dispatch(app, "GET", "/features/basic_auth", nil, nil)
@@ -830,6 +831,7 @@ if ENV["RACTOR_BOOT_SUBPROCESS"] == "1"
     "GET /features/bulk_probe" => [bk_status, nil, bk_body],
     "POST /features/form_echo (multipart)" => [fe_status, fe_headers, fe_body],
     "GET /features/current" => [ca_status, ca_headers, ca_body],
+    "GET /features/current (second request)" => [ca2_status, ca2_headers, ca2_body],
     "GET /features/basic_auth (401)" => [ba401_status, ba401_headers, ba401_body],
     "GET /features/basic_auth (200)" => [ba200_status, ba200_headers, ba200_body],
     "GET /features/rich_text" => [rt_status, rt_headers, rt_body],
@@ -1889,6 +1891,12 @@ else
                    "CurrentAttributes probe must return 200 (got #{results[ca_key][0]})"
       assert ca_parsed["request_id"].present?,
              "Current.request_id (set by before_action, read in the action) must round-trip in a worker"
+      ca2_parsed = JSON.parse(results["GET /features/current (second request)"][2]) rescue {}
+      assert ca2_parsed["request_id"].present?,
+             "a second CurrentAttributes request must also see its own request_id (row 129)"
+      refute_equal ca_parsed["request_id"], ca2_parsed["request_id"],
+                   "CurrentAttributes state must be reset per request in workers (row 129)"
+
 
       # --- Row 92: HTTP basic authentication -------------------------------
       ba401_key = "GET /features/basic_auth (401)"
