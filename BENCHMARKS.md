@@ -430,6 +430,149 @@ Re-verified on 0.2.5 (2026-08-03): `/up` (no DB) completes at ~2,000 rps with
 read path) — stops responding, no crash, no error in the log. The benchmark
 keeps compaction off.
 
+## Re-run on ractor-rails-shim 0.4.2 (2026-10-24)
+
+The headline matrix re-run against the latest shim: **ractor-rails-shim
+0.4.2** (origin/main `6e625ab` plus 4 local unpushed commits, resolved via the
+app's `local.ractor-rails-shim` override; the July headline ran 0.2.5). kino
+stays at **0.2.1** (latest of the pinned 0.2.x line; 0.3+ is breaking).
+Same protocol as the headline: `ab -c 64 -t 30 -k` × 1 run, 5s warmup, YJIT on
+(Rails 8.1 production default), compaction off, Ruby 4.0.6, Rails 8.1.3.1,
+12 cores, macOS 26 (darwin25; July ran darwin24). Raw data:
+`bench/results/bench-20261024-001102.json`.
+
+Two harness fixes were required first (see *Authenticated write-path harness
+fixes* #4 and #5): the verify POST now satisfies `Post`'s
+`length: { minimum: 10 }` body validation, and the per-scenario table cleanup
+is FK-safe — the old `DELETE FROM posts` was silently failing on the
+`comments → posts` foreign key, so an earlier attempt accumulated 372k
+benchmark posts and collapsed the DB read paths (~10-13×) for every scenario
+after the first. With the fix, the table is wiped between scenarios and all
+36 cells run green (0 transport failures, POST 302 verified).
+
+### Throughput / latency (2026-10-24, shim 0.4.2)
+
+| Server | Framing | /up (rps) | GET /posts (rps) | /posts_plain (rps) | POST /posts (rps) | /up p50/p95/p99 | GET /posts p50/p95/p99 | POST p50/p95/p99 |
+|--------|---------|-----------|------------------|--------------------|-------------------|-----------------|------------------------|-------------------|
+| kino :threaded (-t5) | A | 6,112 | 983 | 1,247 | 1,157 | 10 / 12 / 14 | 62 / 89 / 95 | 53 / 72 / 107 |
+| puma single (-w0 -t5) | A | 5,154 | 909 | 1,741 | 1,277 | 12 / 17 / 21 | 67 / 92 / 115 | 49 / 60 / 71 |
+| falcon async (-n1) | A | 4,980 | 1,000 | 1,422 | 979 | 11 / 14 / 53 | 62 / 79 / 103 | 62 / 81 / 133 |
+| **kino :ractor (-w5 -t1)** | B | 2,148 | 478 | 1,878 | 1,020 | 28 / 38 / 58 | 132 / 156 / 185 | 61 / 72 / 84 |
+| puma clustered (-w5 -t1) | B | 21,058 | 2,671 | 3,906 | 2,998 | 3 / 4 / 6 | 23 / 28 / 35 | 13 / 43 / 76 |
+| falcon forked (-n5) | B | **24,562** | **3,328** | **5,896** | 3,519 | 2 / 4 / 4 | 18 / 31 / 43 | 15 / 37 / 69 |
+| kino :ractor (-w5 -t5) | B | 1,989 | 396 | 1,515 | 811 | 32 / 37 / 41 | 157 / 204 / 278 | 71 / 99 / 215 |
+| puma clustered (-w5 -t5) | B | 20,886 | 2,981 | 4,983 | 3,269 | 3 / 5 / 6 | 20 / 30 / 45 | 12 / 53 / 67 |
+| **falcon hybrid (-n5 --threads 5)** | B | 17,758 | 2,626 | 4,114 | 2,800 | 3 / 8 / 11 | 22 / 38 / 64 | 25 / 45 / 62 |
+
+### Memory (peak unique / footprint, MB)
+
+| Server | Framing | Cold RSS | Peak RSS | Peak Unique |
+|--------|---------|----------|----------|-------------|
+| kino :threaded (-t5) | A | 207 | 216 | **189** |
+| puma single (-w0 -t5) | A | 182 | 192 | **192** |
+| falcon async (-n1) | A | 259 | 259 | **232** |
+| **kino :ractor (-w5 -t1)** | B | 256 | 263 | **253** |
+| puma clustered (-w5 -t1) | B | 839 | 877 | **900** |
+| falcon forked (-n5) | B | 991 | 991 | **919** |
+| kino :ractor (-w5 -t5) | B | 299 | 306 | **301** |
+| puma clustered (-w5 -t5) | B | 904 | 921 | **925** |
+| falcon hybrid (-n5 --threads 5) | B | 1,001 | 1,004 | **931** |
+
+### What changed vs the July headline
+
+1. **The ~4× memory win survives, smaller.** kino :ractor (-w5 -t1) peak
+   unique is 253 MB vs puma clustered 900 / falcon forked 919 — **~3.6×
+   lower** (July: 166 vs 720-736, ~4.4×). All servers grew ~15-25% (Rails
+   8.1.3.1, shim 0.4.x features, macOS 26); the Ractor architecture's
+   relative advantage is intact.
+2. **kino :ractor regressed on the no-DB and write paths.** /up 3,136 →
+   2,148 (-32%), POST 2,073 → 1,020 (-51%) vs July. puma/falcon forked
+   numbers are flat-or-better over the same period, so this is not a
+   machine-speed drift — it is consistent with shim 0.4.x's expanded
+   worker-side feature surface (multi-DB connects_to, turbo/ActiveStorage
+   streaming, time zones) adding per-request cost inside worker Ractors.
+   Worth profiling before the next shim release.
+3. **The Kaminari read path dropped ~25-35% for every server** (falcon
+   forked /posts 5,296 → 3,328). Since the drop is uniform across servers,
+   it tracks the app/OS (macOS 26, Rails 8.1.3.1, app-level changes since
+   July), not the shim. kino :ractor's /posts vs /posts_plain split on the
+   same row (478 vs 1,878, ~3.9×) still shows the Kaminari method-table
+   barrier tax under Ractors.
+4. **Forked still wins raw throughput; the -w5 -t5 Ractor config still
+   regresses vs -w5 -t1** on every endpoint — both July conclusions hold.
+
+## Re-run on Ruby 4.0.7 — the Ractor/YJIT barrier fix landed (2026-10-24)
+
+Same matrix re-run on **official Ruby 4.0.7** (`4.0.7` 2026-09-15,
+`229531a6cf`; `.tool-versions` now pins it), shim 0.4.2, everything else
+identical to the 0.4.2 re-run above (`ab -c 64 -t 30 -k` × 1, 5s warmup,
+YJIT on, compaction off, Rails 8.1.3.1, 12 cores). Raw data:
+`bench/results/bench-20261024-003529.json`. All 36 cells green (0 transport
+failures, POST 302 verified).
+
+**Ruby 4.0.7 includes [ruby/ruby#18176](https://github.com/ruby/ruby/pull/18176)**
+(`[Bug #22224]` Ractors/YJIT: skip re-reporting recorded EP escapes to the
+JITs, merged 2026-08-13) — the upstream fix this document was tracking. The
+numbers show it: **kino :ractor under YJIT-on now performs like the old
+YJIT-off workaround numbers, without disabling YJIT.**
+
+### Throughput / latency (2026-10-24, Ruby 4.0.7, YJIT on)
+
+| Server | Framing | /up (rps) | GET /posts (rps) | /posts_plain (rps) | POST /posts (rps) | /up p50/p95/p99 | GET /posts p50/p95/p99 | POST p50/p95/p99 |
+|--------|---------|-----------|------------------|--------------------|-------------------|-----------------|------------------------|-------------------|
+| kino :threaded (-t5) | A | 6,171 | 921 | 1,707 | 1,291 | 10 / 12 / 14 | 68 / 91 / 116 | 48 / 59 / 67 |
+| puma single (-w0 -t5) | A | 5,645 | 979 | 1,600 | 1,155 | 11 / 14 / 16 | 63 / 78 / 103 | 52 / 74 / 113 |
+| falcon async (-n1) | A | 5,812 | 1,056 | 1,559 | 1,221 | 11 / 14 / 15 | 58 / 87 / 96 | 51 / 61 / 78 |
+| **kino :ractor (-w5 -t1)** | B | **14,094** | 534 | 3,554 | 2,324 | 4 / 6 / 7 | 115 / 150 / 210 | 25 / 37 / 66 |
+| puma clustered (-w5 -t1) | B | 21,837 | 2,520 | 4,746 | 3,169 | 3 / 4 / 5 | 23 / 37 / 41 | 15 / 42 / 51 |
+| falcon forked (-n5) | B | 22,182 | **3,938** | **6,346** | **4,493** | 3 / 4 / 5 | 16 / 21 / 28 | 10 / 28 / 33 |
+| kino :ractor (-w5 -t5) | B | 6,692 | 529 | 3,207 | 1,759 | 9 / 12 / 14 | 120 / 142 / 190 | 34 / 40 / 49 |
+| puma clustered (-w5 -t5) | B | 18,887 | 2,591 | 4,782 | 3,349 | 3 / 6 / 10 | 23 / 38 / 56 | 14 / 46 / 59 |
+| falcon hybrid (-n5 --threads 5) | B | 14,638 | 2,630 | 4,489 | 3,585 | 4 / 11 / 17 | 23 / 39 / 52 | 18 / 35 / 55 |
+
+### Memory (peak unique / footprint, MB)
+
+| Server | Framing | Cold RSS | Peak RSS | Peak Unique |
+|--------|---------|----------|----------|-------------|
+| kino :threaded (-t5) | A | 195 | 201 | **196** |
+| puma single (-w0 -t5) | A | 205 | 206 | **191** |
+| falcon async (-n1) | A | 237 | 247 | **228** |
+| **kino :ractor (-w5 -t1)** | B | 236 | 246 | **259** |
+| puma clustered (-w5 -t1) | B | 822 | 857 | **882** |
+| falcon forked (-n5) | B | 998 | 998 | **937** |
+| kino :ractor (-w5 -t5) | B | 301 | 322 | **316** |
+| puma clustered (-w5 -t5) | B | 913 | 915 | **956** |
+| falcon hybrid (-n5 --threads 5) | B | 830 | 892 | **952** |
+
+### What the 4.0.7 run shows
+
+1. **The YJIT/Ractor barrier fix is real and large.** kino :ractor (-w5
+   -t1) `/up` jumps 2,148 → **14,094 rps (6.6×)** vs the 4.0.6 run above,
+   p50 28 → 4 ms — right in line with the August all-YJIT-off matrix
+   (12,950) and head-to-head (13,262). `/posts_plain` 1,878 → 3,554 and
+   POST 1,020 → 2,324. This is with **YJIT left on** (Rails 8.1 default) —
+   `BENCH_YJIT_OFF` is no longer needed for kino :ractor.
+2. **The `-w5 -t5` regression also narrows** (6,692 vs 2,199 on `/up`;
+   3,207 vs 1,878 on `/posts_plain`), consistent with the same barrier
+   having been the main contention source — though -t5 still trails -t1
+   (thread-per-Ractor contention remains).
+3. **`/posts` (Kaminari) is still the outlier** (534 rps, ~7× below falcon
+   forked). The Kaminari per-request `Module.new`+`include` tax is a
+   separate VM cost this fix doesn't touch.
+4. **Forked servers stay flat** (falcon forked `/up` 22,182 vs 24,562 on
+   4.0.6 — within run variance) and keep the raw-throughput lead on the
+   read paths. kino :ractor closes `/up` to within ~1.6× of falcon forked.
+5. **Memory unchanged**: kino :ractor peak unique 259 MB vs puma 882 /
+   falcon 937 — still ~3.5× lower.
+6. Non-fatal shim warnings (`could not make attribute #__class_attr_config
+   shareable`) appear on both 4.0.6 and 4.0.7 with identical counts (45 per
+   boot) — not a 4.0.7 regression.
+
+**Bottom line:** on stock 4.0.7 with Rails defaults, kino :ractor needs no
+YJIT workaround and is competitive on the no-DB path, while keeping its
+~3.5× memory advantage. The one remaining Ractor-specific software cost is
+the Kaminari method-table mutation path.
+
 ## Memory columns
 
 "RSS sum" = sum of `ps` RSS across the whole server process tree (listeners +
@@ -464,3 +607,19 @@ limitation):
    process title, so `pkill -f` missed stale servers and `wait_port_free`
    timed out, aborting the whole run. Now the harness kills listeners + the pid
    tree and rescues the wait.
+
+Two more fixes were needed for the 2026-10-24 re-run:
+
+4. **Body validation (422 on every server)** — `Post` gained
+   `validates :body, length: { minimum: 10 }` after the July run, and the
+   verify POST still sent a 6-char body, so `verify_post_write` got 422
+   (form re-render) on all 9 scenarios and every POST cell reported FAILED.
+   The verify payload now uses a ≥10-char body. (The ab measurement payload
+   already sent "Benchmark body" and was fine.)
+5. **FK-unsafe table cleanup (read paths collapse mid-run)** — the
+   per-scenario cleanup ran `DELETE FROM posts`, which fails on the
+   `comments → posts` foreign key whenever any comments exist (the original
+   posts have 4); `rescue nil` hid the failure, so benchmark posts
+   accumulated across scenarios (372k rows in one run) and the Kaminari /
+   limit-offset read paths collapsed 10-13× for every scenario after the
+   first. Cleanup now runs `DELETE FROM comments; DELETE FROM posts;`.

@@ -1,6 +1,16 @@
 # Draft GitHub issue for `github.com/yaroslav/kino`
 
 > Not posted. Review before submitting.
+>
+> **Status update (2026-10-24), reread before posting:** the numbers below
+> are from Ruby 4.0.6. Ruby 4.0.7 (2026-09-15) shipped
+> [ruby/ruby#18176](https://github.com/ruby/ruby/pull/18176) — the fix for
+> YJIT taking the VM lock and stopping Ractors on method-cache invalidation
+> (bug #22224). On 4.0.7, YJIT on, kino :ractor (-w5 -t1) `/up` goes
+> 3,136 → 14,094 rps and the earlier "YJIT off" workaround is unnecessary.
+> The Ractor per-request allocation/GC tax described below still exists but
+> is much smaller; update the numbers and framing (or link
+> [BENCHMARKS.md](../BENCHMARKS.md)'s 4.0.7 section) before submitting.
 
 ---
 

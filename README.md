@@ -11,36 +11,46 @@ blocker map and the per-concern patch inventory, and
 [`BENCHMARKS.md`](./BENCHMARKS.md) for the full kino `:ractor` vs Puma vs
 Falcon benchmark analysis.
 
-## Latest benchmark — best kino vs best Puma/Falcon, ractor-rails-shim 0.3.1
+## Latest benchmark — best kino vs best Puma/Falcon, ractor-rails-shim 0.4.2, Ruby 4.0.7
 
-`BENCH_KINO_YJIT_OFF=1` (kino YJIT off, puma/falcon YJIT on), Ruby 4.0.6,
-Rails 8.1.3, `ab -c 64 -t 30 -k`, 12 cores.
+YJIT **on** for all servers (Rails 8.1 production default), official
+Ruby 4.0.7, Rails 8.1.3.1, `ab -c 64 -t 30 -k`, 12 cores. Ruby 4.0.7 ships
+the YJIT/Ractor VM-lock fix ([ruby#22224] / [ruby#18176]), so the earlier
+`BENCH_YJIT_OFF` workaround is no longer needed — kino :ractor now runs at
+full speed with stock Rails config.
 
-| Server | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Avg Mem (MB) |
-|--------|-----------|------------------------|-------------------|--------------|
-| **kino :ractor (-w5 -t1)** | 12,960 | 4,328 | **3,084** | **136** |
-| puma clustered (-w5 -t1) | **19,265** | 4,564 | 2,912 | 724 |
-| falcon forked (-n5) | **22,489** | **5,452** | **3,673** | 724 |
-| kino :ractor (-w5 -t5) | 6,949 | 3,482 | 2,096 | 160 |
-| puma clustered (-w5 -t5) | 18,325 | 4,591 | 3,189 | 744 |
-| falcon hybrid (-n5 --threads 5) | 16,608 | 4,490 | 2,952 | 746 |
-| kino :threaded (-t5) | 6,798 | 2,019 | 1,654 | 144 |
-| puma single (-w0 -t5) | 4,948 | 1,506 | 1,010 | 148 |
-| falcon async (-n1) | 4,909 | 1,419 | 920 | 188 |
+| Server | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Peak Mem (MB, unique) |
+|--------|-----------|------------------------|-------------------|-----------------------|
+| **kino :ractor (-w5 -t1)** | 14,094 | 3,554 | 2,324 | **259** |
+| puma clustered (-w5 -t1) | 21,837 | 4,746 | 3,169 | 882 |
+| falcon forked (-n5) | **22,182** | **6,346** | **4,493** | 937 |
+| kino :ractor (-w5 -t5) | 6,692 | 3,207 | 1,759 | 316 |
+| puma clustered (-w5 -t5) | 18,887 | 4,782 | 3,349 | 956 |
+| falcon hybrid (-n5 --threads 5) | 14,638 | 4,489 | 3,585 | 952 |
+| kino :threaded (-t5) | 6,171 | 1,707 | 1,291 | 196 |
+| puma single (-w0 -t5) | 5,645 | 1,600 | 1,155 | 191 |
+| falcon async (-n1) | 5,812 | 1,559 | 1,221 | 228 |
 
-Avg Mem = average of cold and peak unique footprint (COW-aware). With
-puma/falcon at YJIT-on best, kino :ractor (YJIT-off) is competitive on
-`/posts_plain` and beats puma on POST — all at ~5× lower memory. Falcon
-forked (YJIT-on, 5 processes) leads raw throughput on read/no-DB paths.
-The `/posts` (Kaminari) gap persists independently of YJIT (Ruby-VM
-method-table barrier — upstream ruby#22224).
+Peak Mem = macOS `footprint` phys_footprint (COW-aware). With the 4.0.7 fix,
+kino :ractor closes `/up` to within ~1.6× of falcon forked while keeping a
+**~3.5× lower memory footprint**. Falcon forked still leads raw read-path
+throughput. The `/posts` (Kaminari) gap persists — it is Kaminari's
+per-request `Module.new`+`include` method-table mutation, independent of
+YJIT (the #18176 fix covers the YJIT codegen barrier, not this). Full
+matrices, memory tables, the shim 0.4.2-on-4.0.6 comparison and the history
+of all prior runs are in [`BENCHMARKS.md`](./BENCHMARKS.md).
+
+[ruby#22224]: https://bugs.ruby-lang.org/issues/22224
+[ruby#18176]: https://github.com/ruby/ruby/pull/18176
 
 ## Requirements
 
-- **Official Ruby 4.0.6** (or newer) with **Ractor support**, and **Rails
-  8.1.3**. No patched Ruby is required — 4.0.6 ships the frozen-iseq call-cache
-  fix (#22075) and the cross-ractor env-string fix, so `kino -m ractor` runs
-  without the DDKatch patched Ruby/kino forks.
+- **Official Ruby 4.0.7** (or newer; 4.0.6 minimum) with **Ractor support**,
+  and **Rails 8.1.3**. No patched Ruby is required — 4.0.6 ships the
+  frozen-iseq call-cache fix (#22075) and the cross-ractor env-string fix,
+  and **4.0.7 additionally ships the YJIT/Ractor VM-lock fix (#22224 /
+  ruby/ruby#18176)**, which removes the YJIT-off workaround for kino
+  `:ractor` — prefer 4.0.7.
 - **PostgreSQL** (use the `pg` gem — `sqlite3` is **ractor-unsafe** and raises
   `Ractor::UnsafeError`)
 - The official **`kino` gem (0.2.1)** — works as-is on 4.0.6; no fork or patch.
