@@ -418,7 +418,8 @@ def verify_post_write(port, cookie, token)
   req = Net::HTTP::Post.new("/posts")
   req["Cookie"] = cookie_name_value(cookie)
   req["X-CSRF-Token"] = token
-  req.set_form_data("authenticity_token" => token, "post[title]" => "Verify", "post[body]" => "verify")
+  # body must satisfy Post's `length: { minimum: 10 }` validation or create 422s.
+  req.set_form_data("authenticity_token" => token, "post[title]" => "Verify", "post[body]" => "Verify write path")
   res = http.request(req)
   unless res.code == "302" && res["location"] =~ %r{/posts/\d+\z}
     raise "POST /posts did not succeed: code=#{res.code} location=#{res['location'].inspect}"
@@ -549,8 +550,11 @@ def main
           r[:mem_peak] = peak_memory(pids, r[:mem_peak])
           puts "  POST /posts    rps=#{r[:post][:rps]&.round(1)} p50=#{r[:post][:p50]} p95=#{r[:post][:p95]} p99=#{r[:post][:p99]} failed=#{r[:post][:failed]} (302=success; write path verified; n=#{r[:post][:runs]})"
         end
-        # tidy the table so /posts GET stays fast for later scenarios
-        system({ "DATABASE_URL" => DB_URL }, "psql", "-q", "-c", "DELETE FROM posts",
+        # tidy the table so /posts GET stays fast for later scenarios.
+        # comments must go first: FK comments -> posts would abort a bare
+        # `DELETE FROM posts` (rescue nil used to hide that failure).
+        system({ "DATABASE_URL" => DB_URL }, "psql", "-q", "-c",
+                "DELETE FROM comments; DELETE FROM posts;",
                 "postgresql://dev@127.0.0.1:5432/ractor_rails_shim_test_app_test") rescue nil
       rescue StandardError => e
         r[:errors][:post] = "#{e.class}: #{e.message}"
