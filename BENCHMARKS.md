@@ -597,71 +597,98 @@ BENCH_KINO_MULTIPROC=4 BENCH_SCENARIO="multiproc" BENCH_DURATION=30 \
 
 Protocol identical to the 4.0.7 run above: Ruby 4.0.7, shim 0.5.1 (local
 override), Rails 8.1.3.1, YJIT on, compaction off, 12 cores, 30s/endpoint × 1
-run, 5s warmup. Falcon forked (-n5), puma clustered (-w5 -t1), and kino
-:threaded-class single-proc rows were re-measured the same hour. Raw data:
-`bench/results/bench-20261025-{195101,195221,195324,200530,203047}.json`.
-All cells green (0 transport failures, POST 302 verified per process).
+run, 5s warmup. The final full matrix ran all 9 standard scenarios plus the
+5-proc multiproc in ONE invocation; tables below take those rows from that
+file, and the 4-proc parity row from its dedicated run. Raw data:
+`bench/results/bench-20261025-{195101,195221,195324,200530,203047}.json`
+(preliminary single-scenario invocations) and
+`bench/results/bench-20261025-211815.json` (full matrix). All cells green
+(0 transport failures, POST 302 verified per process).
 
-Same-day reproducibility: puma clustered ran twice (`195101`, `195221`) and
-agreed within ~5% on every cell (/up 22,617 vs 22,438; POST 3,042 vs 2,917).
-Caveat on cross-day /posts comparisons: today's runs wiped the posts table
-between scenarios (harness fix #5), while the 2026-10-24 matrices accumulated
-benchmark rows mid-run — so `/posts` cells are only comparable within a day.
+Same-day reproducibility (within-day variance ≈ 10%): puma clustered ran
+twice early and agreed within ~5% (/up 22,617 vs 22,438; POST 3,042 vs
+2,917); kino single-proc 15,754 vs 17,173; 5-proc multiproc 34,121 vs
+30,405. Cross-day caveat: today's runs wiped the posts table between
+scenarios (harness fix #5), while the 2026-10-24 matrices accumulated
+benchmark rows mid-run — so `/posts` cells are only comparable within a
+day.
 
 ### Throughput / latency (2026-10-25, Ruby 4.0.7, YJIT on)
 
+Full same-day matrix (single invocation) + the 4-proc parity row from its
+dedicated run:
+
 | Server | Framing | /up (rps) | GET /posts (rps) | GET /posts_plain (rps) | POST /posts (rps) | /up p50/p95/p99 | GET /posts p50/p95/p99 | GET /posts_plain p50/p95/p99 | POST p50/p95/p99 |
 |--------|---------|-----------|------------------|------------------------|-------------------|-----------------|------------------------|------------------------------|------------------|
-| kino :ractor (-w5 -t1) | B | 15,754 | 516 | 5,134 | 3,360 | 4 / 6 / 7 | 119 / 169 / 228 | 12 / 15 / 19 | 18 / 22 / 29 |
-| puma clustered (-w5 -t1) | B | 22,617 | 2,593 | 4,601 | 3,042 | 3 / 4 / 4 | 22 / 38 / 77 | 13 / 18 / 25 | 15 / 36 / 46 |
-| falcon forked (-n5) | B | 23,707 | **3,979** | 5,689 | **4,268** | 3 / 4 / 5 | 15 / 24 / 39 | 10 / 18 / 32 | 10 / 35 / 49 |
+| kino :threaded (-t5) | A | 6,261 | 1,040 | 1,730 | 1,318 | 10 / 12 / 13 | 58 / 86 / 94 | 35 / 46 / 63 | 46 / 60 / 77 |
+| puma single (-w0 -t5) | A | 5,619 | 1,041 | 1,609 | 1,209 | 11 / 15 / 18 | 60 / 72 / 91 | 38 / 49 / 68 | 50 / 64 / 94 |
+| falcon async (-n1) | A | 5,571 | 889 | 1,528 | 1,106 | 11 / 14 / 15 | 67 / 104 / 126 | 40 / 49 / 57 | 55 / 71 / 118 |
+| kino :ractor (-w5 -t1) | B | 17,173 | 527 | 4,296 | 2,987 | 4 / 6 / 6 | 107 / 179 / 290 | 14 / 21 / 45 | 20 / 26 / 37 |
+| puma clustered (-w5 -t1) | B | 21,598 | 2,640 | 4,597 | 3,131 | 3 / 4 / 5 | 23 / 34 / 46 | 13 / 19 / 27 | 13 / 38 / 50 |
+| falcon forked (-n5) | B | 21,276 | **3,455** | 5,543 | **3,886** | 3 / 5 / 8 | 17 / 27 / 45 | 10 / 21 / 29 | 13 / 29 / 57 |
+| kino :ractor (-w5 -t5) | B | 6,380 | 530 | 3,321 | 1,758 | 10 / 13 / 17 | 119 / 152 / 195 | 19 / 23 / 25 | 34 / 40 / 44 |
+| puma clustered (-w5 -t5) | B | 20,458 | 2,976 | 4,994 | 3,510 | 3 / 5 / 7 | 21 / 29 / 54 | 12 / 19 / 23 | 14 / 41 / 48 |
+| falcon hybrid (-n5 --threads 5) | B | 16,483 | 2,707 | 4,628 | 3,042 | 3 / 9 / 13 | 23 / 36 / 46 | 13 / 22 / 27 | 13 / 54 / 80 |
+| **kino :ractor multiproc (5 procs × w1-t1)** | B | **30,405** | 2,328 | **6,735** | 3,360 | 10 / 12 / 16 | 129 / 172 / 200 | 44 / 56 / 86 | 90 / 124 / 185 |
 | kino :ractor multiproc (4 procs × w1-t1) | B | 27,031 | 2,079 | 6,685 | 3,214 | 9 / 11 / 15 | 117 / 163 / 213 | 37 / 46 / 58 | 75 / 97 / 142 |
-| **kino :ractor multiproc (5 procs × w1-t1)** | B | **34,121** | 2,469 | **8,059** | 3,488 | 9 / 11 / 13 | 122 / 166 / 192 | 39 / 47 / 56 | 86 / 122 / 175 |
 
 ### Memory (peak unique / footprint, MB)
 
 | Server | Framing | Cold RSS | Peak RSS | Peak Unique |
 |--------|---------|----------|----------|-------------|
-| kino :ractor (-w5 -t1) | B | 247 | 254 | **276** |
-| puma clustered (-w5 -t1) | B | 903 | 905 | 942 |
-| falcon forked (-n5) | B | 983 | 985 | 926 |
+| kino :threaded (-t5) | A | 194 | 194 | 190 |
+| puma single (-w0 -t5) | A | 138 | 141 | 198 |
+| falcon async (-n1) | A | 142 | 198 | 232 |
+| kino :ractor (-w5 -t1) | B | 237 | 242 | **255** |
+| puma clustered (-w5 -t1) | B | 857 | 861 | 935 |
+| falcon forked (-n5) | B | 785 | 861 | 929 |
+| kino :ractor (-w5 -t5) | B | 284 | 310 | 294 |
+| puma clustered (-w5 -t5) | B | 866 | 943 | 966 |
+| falcon hybrid (-n5 --threads 5) | B | 986 | 1,016 | 971 |
+| kino :ractor multiproc (5 procs × w1-t1) | B | 841 | 841 | 1,193 |
 | kino :ractor multiproc (4 procs × w1-t1) | B | 904 | 904 | 976 |
-| kino :ractor multiproc (5 procs × w1-t1) | B | 861 | 861 | 1,217 |
 
 ### What the multiproc run shows
 
 1. **First raw-throughput win over the forked servers.** 5 procs × w1-t1
-   does 34,121 rps on `/up` — 1.44× falcon forked, 1.51× puma clustered.
-   The single-process kino wall (one fiber scheduler, one accept path, one
-   heap) was the last structural blocker; N independent processes remove it.
-2. **Per-proc scaling is linear.** Per-proc `/up` rate: 6,824 (5 procs) →
-   6,758 (4 procs), −1%. Same shape as the synthetic-app finding — ractor
-   parallelism scales across processes without contention penalties at this
-   core count.
-3. **Memory parity = 4 procs, and kino still leads at it.** 4 × w1-t1 peaks
-   at 976 MB unique vs falcon forked's 926 MB (+5%) — the apples-to-apples
-   RAM comparison. At parity kino leads `/up` (+14%) and `/posts_plain`
-   (+18%), and loses `/posts` (−48%) and POST (−25%). Parity costs one
-   worker: falcon fields 5 forked workers, kino 4.
+   does 30,405 rps on `/up` — 1.43× falcon forked (21,276), 1.41× puma
+   clustered (21,598); an earlier standalone run of the same config did
+   34,121 (within ~11% run variance). The single-process kino wall (one
+   fiber scheduler, one accept path, one heap) was the last structural
+   blocker; N independent processes remove it.
+2. **Per-proc scaling is linear.** Per-proc `/up` rate: 6,081 (5 procs,
+   full matrix) / 6,824 (5 procs, standalone) / 6,758 (4 procs) — within
+   the day's ~10% variance, vs 3,435 per ractor in the single process
+   (17,173 / 5). Same shape as the synthetic-app finding — ractor
+   parallelism scales across processes without contention penalties at
+   this core count.
+3. **Memory parity = 4 procs, and kino still leads at it.** 4 × w1-t1
+   peaks at 976 MB unique vs falcon forked's 929 MB (+5%) — the
+   apples-to-apples RAM comparison. At parity kino leads `/up` (+25%) and
+   `/posts_plain` (+21%), and loses `/posts` (−40%) and POST (−17%).
+   Parity costs one worker: falcon fields 5 forked workers, kino 4.
 4. **The single-process `/posts` deficit was a shared-heap confound, not an
-   inherent Ractor cost.** 516 (1 proc, 5 ractors) → 2,469 (5 procs), 4.8×.
-   It still trails falcon (3,979), and the same-row split (2,469 vs 8,059 =
-   3.3×) shows the Kaminari method-table tax survives even at one ractor per
-   process — 4.0.7's #18176 fix removed only the YJIT half of the barrier.
-5. **POST does not scale with procs (+3.8%, 3,360 → 3,488)** because it was
-   already fully parallel inside the single process: the per-ractor write
-   rate is ~670-800 rps in every topology measured. kino's per-worker write
-   rate at 4 procs (804) is within 6% of falcon's (854) — falcon wins the
-   write cell on worker count (5 vs 4), not on per-worker speed.
-6. **kino multiproc p50s are queueing, not request cost.** Each -w1 process
-   serves all 64 connections with one ractor: 64 ÷ ~700 rps ≈ 92 ms mean
-   wait — kino's access log shows Rails completing each POST in 5-10 ms
-   while kino logs 84-95 ms wall time. Single-proc -w5 spreads the same 64
-   connections over 5 ractors, hence p50 18 ms.
+   inherent Ractor cost.** 527 (1 proc, 5 ractors) → 2,328 (5 procs), 4.4×
+   (standalone runs: 516 → 2,469, 4.8×). It still trails falcon (3,455),
+   and the same-row split (2,328 vs 6,735 = 2.9×) shows the Kaminari
+   method-table tax survives even at one ractor per process — 4.0.7's
+   #18176 fix removed only the YJIT half of the barrier.
+5. **POST barely scales with procs (+12%, 2,987 → 3,360; standalone:
+   3,360 → 3,488, +4%)** because it was already fully parallel inside the
+   single process: the per-ractor write rate lands in the same ~600-800
+   rps band in every kino topology, overlapping falcon's per-worker rate
+   (777 in the full matrix, 854 standalone). Falcon wins the write cell on
+   worker count at parity (5 vs 4), not on per-worker speed.
+6. **kino multiproc p50s are queueing, not request cost.** Each -w1
+   process serves all 64 connections with one ractor: 64 ÷ ~670 rps ≈ 95 ms
+   mean wait (measured p50: 86-90 ms) — kino's access log shows Rails
+   completing each POST in 5-10 ms while kino logs 84-95 ms wall time.
+   Single-proc -w5 spreads the same 64 connections over 5 ractors, hence
+   p50 20 ms.
 7. **The single-proc memory advantage does not survive the multiproc
-   framing.** Each process pays its own frozen-graph copy (~243 MB unique
-   per proc, consistent at 4 and 5 procs): 4-5 procs = 976-1,217 MB, vs
-   kino :ractor (-w5 -t1)'s 276 MB. The ~4.7× memory win is a property of
+   framing.** Each process pays its own frozen-graph copy (~239 MB unique
+   per proc, consistent at 4 and 5 procs): 4-5 procs = 976-1,193 MB, vs
+   kino :ractor (-w5 -t1)'s 255 MB. The ~3.6× memory win is a property of
    the single-process configuration, not of ractors per se.
 
 **Bottom line:** multi-process kino :ractor takes the no-DB and
