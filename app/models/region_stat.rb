@@ -2,7 +2,7 @@
 # routes its WHERE through both PK columns; `find` takes the PK tuple as
 # an array. No synthetic id column exists.
 class RegionStat < ApplicationRecord
-  self.primary_key = [:region, :year]
+  self.primary_key = [ :region, :year ]
 
   validates :region, :year, presence: true
 end

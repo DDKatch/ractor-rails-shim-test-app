@@ -10,7 +10,7 @@ class CreateRegionStats < ActiveRecord::Migration[8.1]
     # NB: no `id: false` here — with a composite `primary_key:` array,
     # Rails creates no synthetic id column anyway; passing both silently
     # dropped the PK.
-    create_table :region_stats, primary_key: [:region, :year] do |t|
+    create_table :region_stats, primary_key: [ :region, :year ] do |t|
       t.string :region, null: false
       t.integer :year, null: false
       t.bigint :visits, default: 0, null: false

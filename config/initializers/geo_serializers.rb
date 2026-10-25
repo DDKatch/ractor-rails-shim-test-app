@@ -9,4 +9,4 @@
 require Rails.root.join("app/models/geo_point")
 require Rails.root.join("app/serializers/geo_point_serializer")
 
-ActiveJob::Serializers.add_serializers([GeoPointSerializer])
+ActiveJob::Serializers.add_serializers([ GeoPointSerializer ])

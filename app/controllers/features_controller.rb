@@ -42,8 +42,8 @@ class FeaturesController < ApplicationController
 
   def append_around_marker(marker)
     existing = response.headers[AROUND_ORDER_HEADER].to_s.split(",")
-    existing = [] if existing == [""]
-    response.headers[AROUND_ORDER_HEADER] = (existing + [marker]).join(",")
+    existing = [] if existing == [ "" ]
+    response.headers[AROUND_ORDER_HEADER] = (existing + [ marker ]).join(",")
   end
 
   # RAILS_FEATURES.md #90: the wrapped action itself. `around_wrapped_ok`
@@ -232,8 +232,8 @@ class FeaturesController < ApplicationController
     # Upsert: insert a row, then upsert the same unique name with a new
     # timestamp — the second write must UPDATE, not duplicate.
     unique_name = "#{base} upsert"
-    Tag.insert_all!([{ name: unique_name, created_at: now, updated_at: now }])
-    upserted = Tag.upsert_all([{ name: unique_name, created_at: now, updated_at: now }], unique_by: :name)
+    Tag.insert_all!([ { name: unique_name, created_at: now, updated_at: now } ])
+    upserted = Tag.upsert_all([ { name: unique_name, created_at: now, updated_at: now } ], unique_by: :name)
 
     # The unique index on name must fire for a duplicate bulk INSERT. Run the
     # expected-conflict insert inside a nested transaction (savepoint) so the
@@ -242,7 +242,7 @@ class FeaturesController < ApplicationController
     conflict_raises = false
     Tag.transaction(requires_new: true) do
       begin
-        Tag.insert_all!([{ name: rows.first[:name], created_at: now, updated_at: now }])
+        Tag.insert_all!([ { name: rows.first[:name], created_at: now, updated_at: now } ])
       rescue ActiveRecord::RecordNotUnique
         conflict_raises = true
         raise ActiveRecord::Rollback
@@ -791,7 +791,7 @@ class FeaturesController < ApplicationController
   # rendered with formats: [:turbo_stream] (mime registered by turbo-rails).
   def turbo_stream_template_probe
     @post = Post.order(:id).last
-    render :turbo_stream_template, formats: [:turbo_stream]
+    render :turbo_stream_template, formats: [ :turbo_stream ]
   end
 
   # RAILS_FEATURES.md #95: ActionController::Live SSE. Two events are
@@ -817,7 +817,7 @@ class FeaturesController < ApplicationController
     # The custom serializer must be found in the registry (worker-side) and
     # round-trip through serialize → deserialize.
     serialized = ActiveJob::Serializers.serialize(point)
-    round_trip = ActiveJob::Arguments.deserialize(ActiveJob::Arguments.serialize([point])).first
+    round_trip = ActiveJob::Arguments.deserialize(ActiveJob::Arguments.serialize([ point ])).first
 
     stamp = Time.current.to_i
     job = GeoProbeJob.perform_later(GeoPoint.new(stamp.to_f / 1000, 0.0))
