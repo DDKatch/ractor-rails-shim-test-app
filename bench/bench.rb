@@ -179,13 +179,15 @@ SCENARIOS = [
 # NOTE: must run before the BENCH_SCENARIO filter below so the new scenario
 # can be selected by name.
 if (mproc = ENV["BENCH_KINO_MULTIPROC"].to_i) > 0
+  mpw = ENV["BENCH_KINO_MP_WORKERS"].to_i
+  mpw = 1 if mpw < 1
   SCENARIOS << {
-    name: "kino :ractor multiproc (#{mproc} procs x w1-t1)",
+    name: "kino :ractor multiproc (#{mproc} procs x w#{mpw}-t1)",
     framing: "B",
     pgrep: "kino",
     ports: (1..mproc).map { |i| PORT + i },
     cmd_builder: ->(port) {
-      ["bundle", "exec", "kino", "-m", "ractor", "-w", "1", "-t", "1",
+      ["bundle", "exec", "kino", "-m", "ractor", "-w", mpw.to_s, "-t", "1",
        "-p", port.to_s, "-C", "kino.rb", "config_ractor.ru"]
     },
     env: COMMON_ENV.merge("KINO_MODE" => "ractor", "BENCHMARK_STATS" => "1",

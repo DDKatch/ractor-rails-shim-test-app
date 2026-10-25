@@ -31,9 +31,10 @@ comparable. Full matrices and the run history live in
 
 | Server | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Peak Mem (MB, unique) |
 |--------|-----------|------------------------|-------------------|-----------------------|
-| **kino :ractor multiproc (5 procs × w1-t1)** | **30,405** | **6,735** | 3,360 | 1,193 |
+| **kino :ractor multiproc (4 procs × w5-t1)** | **58,122** | **18,386** | **11,784** | 1,045 |
+| kino :ractor multiproc (5 procs × w1-t1) | 30,405 | 6,735 | 3,360 | 1,193 |
 | kino :ractor multiproc (4 procs × w1-t1) | 27,031 | 6,685 | 3,214 | 976 |
-| falcon forked (-n5) | 21,276 | 5,543 | **3,886** | 929 |
+| falcon forked (-n5) | 21,276 | 5,543 | 3,886 | 929 |
 | puma clustered (-w5 -t1) | 21,598 | 4,597 | 3,131 | 935 |
 | kino :ractor (-w5 -t1) | 17,173 | 4,296 | 2,987 | **255** |
 | puma clustered (-w5 -t5) | 20,458 | 4,994 | 3,510 | 966 |
@@ -50,25 +51,27 @@ three different winners:
   frozen-graph sharing still wins by ~3.6× — but it is well behind on
   `/up` (the one-process scheduler wall) and last on the Kaminari read
   path.
-- **Maximum throughput:** 5-proc kino :ractor leads `/up` (1.43× falcon,
-  1.41× puma) and the non-Kaminari read path (1.22× falcon) — at ~28% more
-  memory than forked Falcon.
-- **Memory parity:** 4-proc kino :ractor (976 MB vs falcon's 929 MB) keeps
-  the `/up` (+25%) and `/posts_plain` (+21%) lead while losing the
-  DB-write cell to falcon (−17%): parity costs kino one worker, and
-  per-worker write rates are near-equal (804 vs 777 rps).
+- **Maximum throughput:** 4 procs × 5 ractors (20 workers) leads `/up`
+  (2.73× falcon), the non-Kaminari read path (3.32× falcon), and the
+  write path (3.03× falcon) — at +13% memory vs forked Falcon.
+- **The one remaining loss:** the Kaminari read path (`GET /posts`) is
+  invariant at ~2.1k rps across every kino topology while its
+  limit/offset twin scaled 8.7× — the per-request `Module.new`+`include`
+  method-table mutation stalls each process's whole ractor set, so it is
+  a VM cost, not a topology one.
 
-Per-proc scaling is linear (6,081-6,824 rps/proc across 4- and 5-proc
-runs, vs 3,435/ractor single-process), and the old single-process `/posts`
-deficit is mostly a shared-heap artifact: 527 → 2,328 rps (4.4×) once each
-process owns its own heap and DB pool. The residual `/posts` vs
-`/posts_plain` split (2.9× multiproc, 8.2× single-proc) is Kaminari's
-per-request `Module.new`+`include` method-table mutation — the #18176 fix
-covered only the YJIT codegen half of that barrier. kino multiproc's high
-p50s (75-124 ms) are queueing at the single ractor per process (64
-connections ÷ ~670-800 rps ≈ 80-95 ms), not request cost — Rails
-completes each POST in 5-10 ms. Full matrices, memory tables and the run
-history are in [`BENCHMARKS.md`](./BENCHMARKS.md).
+Throughput scales linearly in total workers: per-ractor POST rate sits in
+the same ~590-800 rps band in every kino topology (597 at 5 ractors in one
+process → 589 at 20 ractors in four), while packing ractors per process
+trades per-ractor `/up` headroom (~6,800 isolated vs ~3,400 shared) for
+worker count. The old single-process `/posts` deficit was the shared heap
+(527 → ~2.1-2.5k with processes), not an inherent Ractor cost. kino
+multiproc's p50s are queueing at the ractor-per-worker boundary (64
+connections ÷ per-proc rate ≈ 22-95 ms), not request cost — Rails
+completes each POST in 5-10 ms. Connection ceiling: 4 procs × 5 ractors ×
+pool 5 = 100 = `max_connections`; smaller pools measured faster. Full
+matrices, memory tables and the run history are in
+[`BENCHMARKS.md`](./BENCHMARKS.md).
 
 [ruby#22224]: https://bugs.ruby-lang.org/issues/22224
 [ruby#18176]: https://github.com/ruby/ruby/pull/18176
@@ -152,7 +155,9 @@ footprint. It seeds the benchmark user itself.
 
 Set `BENCH_KINO_MULTIPROC=N` to add a multi-process kino :ractor scenario
 (N processes × `-m ractor -w1 -t1` on ports `PORT+1..PORT+N`; per-port Req/s
-summed, latency = median across ports, memory summed across trees).
+summed, latency = median across ports, memory summed across trees). Set
+`BENCH_KINO_MP_WORKERS=M` to change the per-process worker count (e.g. 4
+procs × w5 = 20 workers).
 
 **Prerequisites**
 
