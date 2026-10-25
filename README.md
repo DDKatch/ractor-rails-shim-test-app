@@ -40,7 +40,10 @@ comparable. Full matrices and the run history live in
 | puma clustered (-w5 -t5) | 20,458 | 4,994 | 3,510 | 966 |
 | falcon hybrid (-n5 --threads 5) | 16,483 | 4,628 | 3,042 | 971 |
 | kino :ractor (-w5 -t5) | 6,380 | 3,321 | 1,758 | 294 |
+| puma single (-w0 -t20), MRI | 5,431 | 1,605 | 1,023 | 198 |
+| jruby + puma single (-w0 -t40) | 4,513 | 2,070 | 1,162 | 1,227 |
 | kino :threaded (-t5) | 6,261 | 1,730 | 1,318 | 190 |
+| jruby + puma single (-w0 -t20) | 3,596 | 1,281 | 909 | 1,246 |
 | puma single (-w0 -t5) | 5,619 | 1,609 | 1,209 | 198 |
 | falcon async (-n1) | 5,571 | 1,528 | 1,106 | 232 |
 
@@ -59,6 +62,15 @@ three different winners:
   limit/offset twin scaled 8.7× — the per-request `Module.new`+`include`
   method-table mutation stalls each process's whole ractor set, so it is
   a VM cost, not a topology one.
+- **JRuby check (the Reddit counter-claim):** a single JVM process with
+  40 Puma threads matches or slightly beats single-process MRI on the
+  scalable read path — real parallelism, no GVL — but peaks at ~1.2 GB
+  unique vs 198 MB for the same single-process MRI topology, and the
+  `json` 3.1.0-java Coder is not thread-safe (every session-cookie
+  commit 500s under load without a synchronization workaround). The
+  kino frozen-graph shape is the same "shared memory, many workers" idea
+  at ~1/6 the footprint and 12-50× the per-worker throughput. Details in
+  [`BENCHMARKS.md`](./BENCHMARKS.md).
 
 Throughput scales linearly in total workers: per-ractor POST rate sits in
 the same ~590-800 rps band in every kino topology (597 at 5 ractors in one
@@ -157,7 +169,9 @@ Set `BENCH_KINO_MULTIPROC=N` to add a multi-process kino :ractor scenario
 (N processes × `-m ractor -w1 -t1` on ports `PORT+1..PORT+N`; per-port Req/s
 summed, latency = median across ports, memory summed across trees). Set
 `BENCH_KINO_MP_WORKERS=M` to change the per-process worker count (e.g. 4
-procs × w5 = 20 workers).
+procs × w5 = 20 workers). Set `BENCH_JRUBY_THREADS=N` to add the JRuby
+comparison (one JVM process, Puma `-w0 -tN`; needs the JRuby distribution,
+`Gemfile.jruby` + its lockfile, and `JRUBY_HOME`/`JRUBY_BIN`).
 
 **Prerequisites**
 

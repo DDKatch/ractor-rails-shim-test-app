@@ -1,7 +1,11 @@
 default: &default
-  adapter: postgresql
+  # C `pg` doesn't exist on JRuby: run the app with DB_ADAPTER=jdbcpostgresql
+  # (activerecord-jdbcpostgresql-adapter). Default stays stock MRI `pg`.
+  adapter: <%= ENV["DB_ADAPTER"] || "postgresql" %>
   encoding: unicode
-  pool: 5
+  # Match the connection pool to the server's thread count (JRuby runs 20+)
+  # via DB_POOL; default stays MRI's 5.
+  pool: <%= ENV["DB_POOL"] || 5 %>
   host: 127.0.0.1
   username: dev
   # Disable GSSAPI/Kerberos auth to prevent SIGSEGV in forked workers.
@@ -34,7 +38,9 @@ test:
 production:
   primary:
     <<: *default
-    database: ractor_rails_shim_test_app_prod
+    # BENCH_DB_NAME lets the JRuby benchmark serve the test DB without
+    # DATABASE_URL (which would force the C `postgresql` URL resolver).
+    database: <%= ENV["BENCH_DB_NAME"] || "ractor_rails_shim_test_app_prod" %>
   secondary:
     <<: *default
     database: ractor_rails_shim_test_app_prod_secondary
