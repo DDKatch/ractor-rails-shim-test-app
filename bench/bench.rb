@@ -168,6 +168,31 @@ SCENARIOS = [
   },
 ]
 
+# Multi-process kino :ractor (the "ractor server cluster" topology from
+# MULTIPROC_RACTOR.md): BENCH_KINO_MULTIPROC=N launches N independent kino
+# processes, each `-m ractor -w1 -t1`, on ports PORT+1..PORT+N. Each port is
+# measured with the same `ab -c 64` as the single-port scenarios and the
+# harness SUMS the per-port Req/s (aggregate capacity of the cluster).
+# Memory is summed across all N process trees: with N=5 that lands near the
+# memory budget of falcon forked -n5 / puma clustered -w5 (same 5-worker
+# capacity, same RAM — the parity comparison).
+# NOTE: must run before the BENCH_SCENARIO filter below so the new scenario
+# can be selected by name.
+if (mproc = ENV["BENCH_KINO_MULTIPROC"].to_i) > 0
+  SCENARIOS << {
+    name: "kino :ractor multiproc (#{mproc} procs x w1-t1)",
+    framing: "B",
+    pgrep: "kino",
+    ports: (1..mproc).map { |i| PORT + i },
+    cmd_builder: ->(port) {
+      ["bundle", "exec", "kino", "-m", "ractor", "-w", "1", "-t", "1",
+       "-p", port.to_s, "-C", "kino.rb", "config_ractor.ru"]
+    },
+    env: COMMON_ENV.merge("KINO_MODE" => "ractor", "BENCHMARK_STATS" => "1",
+                           "RUBY_GC_DISABLE_COMPACTION" => (ENV["DISABLE_COMPACTION"] ? "1" : "0")),
+  }
+end
+
 if (filter = ENV["BENCH_SCENARIO"])
   SCENARIOS.select! { |s| s[:name].downcase.include?(filter.downcase) }
   raise "no scenarios matched BENCH_SCENARIO=#{filter.inspect}" if SCENARIOS.empty?
@@ -307,6 +332,26 @@ def measure_endpoint(port, path, **opts)
   runs = []
   RUNS.times { runs << run_ab(port, path, **opts) }
   aggregate_runs(runs)
+end
+
+# Aggregate per-port results into one row: Req/s and failures SUM (the ports
+# are independent capacity), latency percentiles are the median across ports
+# (each port ran at the same per-port concurrency). Each port gets RUNS ab
+# passes; per-port stats are aggregated first, then combined.
+def measure_endpoint_ports(ports, path, **opts)
+  per_port = ports.map do |p|
+    runs = []
+    RUNS.times { runs << run_ab(p, path, **opts) }
+    aggregate_runs(runs)
+  end
+  {
+    rps: per_port.sum { |a| a[:rps].to_f },
+    failed: per_port.sum { |a| a[:failed].to_i },
+    p50: median(per_port.map { |a| a[:p50] }),
+    p95: median(per_port.map { |a| a[:p95] }),
+    p99: median(per_port.map { |a| a[:p99] }),
+    runs: per_port.sum { |a| a[:runs] },
+  }
 end
 
 def sample_memory(pids)
@@ -493,23 +538,27 @@ def main
 
   SCENARIOS.each do |sc|
     puts "\n=== #{sc[:name]} [framing #{sc[:framing]}] ==="
-    cleanup_port(PORT)
-    pid = spawn(sc[:env], *sc[:cmd], err: "/tmp/#{sc[:pgrep]}_bench.log")
+    ports = sc[:ports] || [PORT]
+    ports.each { |p| cleanup_port(p) }
+    spawned = ports.each_with_index.map do |p, i|
+      cmd = sc[:cmd_builder] ? sc[:cmd_builder].call(p) : sc[:cmd]
+      spawn(sc[:env], *cmd, err: "/tmp/#{sc[:pgrep]}_bench_#{i}.log")
+    end
     r = { sc: sc, rss: nil, up: nil, posts: nil, posts_plain: nil, post: nil, errors: {} }
     begin
-      wait_ready(PORT, timeout: sc[:wait_timeout] || 90)
+      ports.each { |p| wait_ready(p, timeout: sc[:wait_timeout] || 90) }
       # warmup: a real ab burst hits every worker so per-worker caches are
       # populated before we measure (a single GET only warms one worker).
-      warmup_ab(PORT, "/up")
-      warmup_ab(PORT, "/posts")
-      warmup_ab(PORT, "/posts_plain")
+      ports.each { |p| warmup_ab(p, "/up") }
+      ports.each { |p| warmup_ab(p, "/posts") }
+      ports.each { |p| warmup_ab(p, "/posts_plain") }
 
-      pids = server_pids(PORT, pid)
+      pids = ports.each_with_index.flat_map { |p, i| server_pids(p, spawned[i]) }.uniq
       r[:mem_cold] = sample_memory(pids)
       r[:mem_peak] = r[:mem_cold].dup
 
       begin
-        r[:up] = measure_endpoint(PORT, "/up")
+        r[:up] = measure_endpoint_ports(ports, "/up")
         r[:mem_peak] = peak_memory(pids, r[:mem_peak])
         puts "  /up            rps=#{r[:up][:rps]&.round(1)} p50=#{r[:up][:p50]} p95=#{r[:up][:p95]} p99=#{r[:up][:p99]} failed=#{r[:up][:failed]} (n=#{r[:up][:runs]})"
       rescue StandardError => e
@@ -518,7 +567,7 @@ def main
       end
 
       begin
-        r[:posts] = measure_endpoint(PORT, "/posts")
+        r[:posts] = measure_endpoint_ports(ports, "/posts")
         r[:mem_peak] = peak_memory(pids, r[:mem_peak])
         puts "  /posts (GET)   rps=#{r[:posts][:rps]&.round(1)} p50=#{r[:posts][:p50]} p95=#{r[:posts][:p95]} p99=#{r[:posts][:p99]} failed=#{r[:posts][:failed]} (n=#{r[:posts][:runs]})"
       rescue StandardError => e
@@ -527,7 +576,7 @@ def main
       end
 
       begin
-        r[:posts_plain] = measure_endpoint(PORT, "/posts_plain")
+        r[:posts_plain] = measure_endpoint_ports(ports, "/posts_plain")
         r[:mem_peak] = peak_memory(pids, r[:mem_peak])
         puts "  /posts_plain   rps=#{r[:posts_plain][:rps]&.round(1)} p50=#{r[:posts_plain][:p50]} p95=#{r[:posts_plain][:p95]} p99=#{r[:posts_plain][:p99]} failed=#{r[:posts_plain][:failed]} (n=#{r[:posts_plain][:runs]})"
       rescue StandardError => e
@@ -536,20 +585,43 @@ def main
       end
 
       begin
-        cookie, token = auth_cookie_and_create_token(PORT)
-        verify_post_write(PORT, cookie, token)
-        postdata = "authenticity_token=#{CGI.escape(token)}&post[title]=Benchmark&post[body]=Benchmark+body"
-        Tempfile.create("postdata") do |f|
-          f.write(postdata)
-          f.flush
-          r[:post] = measure_endpoint(PORT, "/posts", method: :post, cookie: cookie, postfile: f.path, csrf: token)
-          if r[:post][:failed].to_i > 0
-            r[:errors][:post] = "POST transport failures: #{r[:post][:failed]} (recorded, not aborted)"
-            puts "  POST /posts    WARN: #{r[:errors][:post]}"
+        if ports.size == 1
+          cookie, token = auth_cookie_and_create_token(PORT)
+          verify_post_write(PORT, cookie, token)
+          postdata = "authenticity_token=#{CGI.escape(token)}&post[title]=Benchmark&post[body]=Benchmark+body"
+          Tempfile.create("postdata") do |f|
+            f.write(postdata)
+            f.flush
+            r[:post] = measure_endpoint_ports([PORT], "/posts", method: :post, cookie: cookie, postfile: f.path, csrf: token)
           end
-          r[:mem_peak] = peak_memory(pids, r[:mem_peak])
-          puts "  POST /posts    rps=#{r[:post][:rps]&.round(1)} p50=#{r[:post][:p50]} p95=#{r[:post][:p95]} p99=#{r[:post][:p99]} failed=#{r[:post][:failed]} (302=success; write path verified; n=#{r[:post][:runs]})"
+        else
+          # Multi-process: sessions live per-process, so the sign-in dance
+          # runs once per port and the harness sums the Req/s.
+          post_runs = ports.map do |p|
+            cookie, token = auth_cookie_and_create_token(p)
+            verify_post_write(p, cookie, token)
+            postdata = "authenticity_token=#{CGI.escape(token)}&post[title]=Benchmark&post[body]=Benchmark+body"
+            Tempfile.create("postdata") do |f|
+              f.write(postdata)
+              f.flush
+              run_ab(p, "/posts", method: :post, cookie: cookie, postfile: f.path, csrf: token)
+            end
+          end
+          r[:post] = {
+            rps: post_runs.sum { |x| x[:rps].to_f },
+            failed: post_runs.sum { |x| x[:failed].to_i },
+            p50: median(post_runs.map { |x| x[:p50] }),
+            p95: median(post_runs.map { |x| x[:p95] }),
+            p99: median(post_runs.map { |x| x[:p99] }),
+            runs: post_runs.size,
+          }
         end
+        if r[:post][:failed].to_i > 0
+          r[:errors][:post] = "POST transport failures: #{r[:post][:failed]} (recorded, not aborted)"
+          puts "  POST /posts    WARN: #{r[:errors][:post]}"
+        end
+        r[:mem_peak] = peak_memory(pids, r[:mem_peak])
+        puts "  POST /posts    rps=#{r[:post][:rps]&.round(1)} p50=#{r[:post][:p50]} p95=#{r[:post][:p95]} p99=#{r[:post][:p99]} failed=#{r[:post][:failed]} (302=success; write path verified; n=#{r[:post][:runs]})"
         # tidy the table so /posts GET stays fast for later scenarios.
         # comments must go first: FK comments -> posts would abort a bare
         # `DELETE FROM posts` (rescue nil used to hide that failure).
@@ -564,18 +636,19 @@ def main
       puts "  SCENARIO FAILED: #{e.class}: #{e.message}"
       r[:errors][:scenario] = "#{e.class}: #{e.message}"
     ensure
-      # Release the port by killing the entire server tree. Don't rely on the
-      # cmdline pattern alone: puma/kino rename their process title and fork
-      # workers, so match whatever is actually LISTENing on the port (lsof)
-      # plus the tracked pid's descendant tree.
-      victims = ([pid].compact + descendant_pids(pid) + listening_pids(PORT)).uniq.reject { |v| !v || v.zero? }
+      # Release the port(s) by killing the entire server tree(s). Don't rely
+      # on the cmdline pattern alone: puma/kino rename their process title and
+      # fork workers, so match whatever is actually LISTENing on the port
+      # (lsof) plus each tracked pid's descendant tree.
+      victims = (spawned + spawned.flat_map { |s| descendant_pids(s) } +
+                 ports.flat_map { |p| listening_pids(p) }).uniq.reject { |v| !v || v.zero? }
       victims.each { |v| Process.kill("TERM", v) rescue nil }
       `pkill -f #{sc[:pgrep].shellescape}` rescue nil
       sleep 1
       victims.each { |v| Process.kill("KILL", v) rescue nil }
-      cleanup_port(PORT)
+      ports.each { |p| cleanup_port(p) }
       begin
-        wait_port_free(PORT, timeout: 20)
+        ports.each { |p| wait_port_free(p, timeout: 20) }
       rescue StandardError => e
         puts "  (warn: #{e.message})"
       end

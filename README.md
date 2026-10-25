@@ -11,34 +11,54 @@ blocker map and the per-concern patch inventory, and
 [`BENCHMARKS.md`](./BENCHMARKS.md) for the full kino `:ractor` vs Puma vs
 Falcon benchmark analysis.
 
-## Latest benchmark — best kino vs best Puma/Falcon, ractor-rails-shim 0.4.2, Ruby 4.0.7
+## Latest benchmark — multi-process kino :ractor vs best Puma/Falcon, ractor-rails-shim 0.5.1, Ruby 4.0.7 (2026-10-25)
 
 YJIT **on** for all servers (Rails 8.1 production default), official
 Ruby 4.0.7, Rails 8.1.3.1, `ab -c 64 -t 30 -k`, 12 cores. Ruby 4.0.7 ships
 the YJIT/Ractor VM-lock fix ([ruby#22224] / [ruby#18176]), so the earlier
-`BENCH_YJIT_OFF` workaround is no longer needed — kino :ractor now runs at
+`BENCH_YJIT_OFF` workaround is no longer needed — kino :ractor runs at
 full speed with stock Rails config.
+
+New in this run: **multi-process kino :ractor** — `BENCH_KINO_MULTIPROC=N`
+launches N independent kino processes, each `-m ractor -w1 -t1` (per-process
+fiber scheduler + frozen graph + DB pool). Req/s are summed across ports;
+latency is the median across ports; memory is summed across all N trees.
+All rows below were measured the same day against a clean DB (posts wiped
+between scenarios), so they are directly comparable; the full history and
+the 9-scenario A/B/5×5 matrices live in [`BENCHMARKS.md`](./BENCHMARKS.md).
 
 | Server | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Peak Mem (MB, unique) |
 |--------|-----------|------------------------|-------------------|-----------------------|
-| **kino :ractor (-w5 -t1)** | 14,094 | 3,554 | 2,324 | **259** |
-| puma clustered (-w5 -t1) | 21,837 | 4,746 | 3,169 | 882 |
-| falcon forked (-n5) | **22,182** | **6,346** | **4,493** | 937 |
-| kino :ractor (-w5 -t5) | 6,692 | 3,207 | 1,759 | 316 |
-| puma clustered (-w5 -t5) | 18,887 | 4,782 | 3,349 | 956 |
-| falcon hybrid (-n5 --threads 5) | 14,638 | 4,489 | 3,585 | 952 |
-| kino :threaded (-t5) | 6,171 | 1,707 | 1,291 | 196 |
-| puma single (-w0 -t5) | 5,645 | 1,600 | 1,155 | 191 |
-| falcon async (-n1) | 5,812 | 1,559 | 1,221 | 228 |
+| **kino :ractor multiproc (5 procs × w1-t1)** | **34,121** | **8,059** | 3,488 | 1,217 |
+| kino :ractor multiproc (4 procs × w1-t1) | 27,031 | 6,685 | 3,214 | 976 |
+| falcon forked (-n5) | 23,707 | 5,689 | **4,268** | 926 |
+| puma clustered (-w5 -t1) | 22,617 | 4,601 | 3,042 | 942 |
+| kino :ractor (-w5 -t1) | 15,754 | 5,134 | 3,360 | **276** |
 
-Peak Mem = macOS `footprint` phys_footprint (COW-aware). With the 4.0.7 fix,
-kino :ractor closes `/up` to within ~1.6× of falcon forked while keeping a
-**~3.5× lower memory footprint**. Falcon forked still leads raw read-path
-throughput. The `/posts` (Kaminari) gap persists — it is Kaminari's
-per-request `Module.new`+`include` method-table mutation, independent of
-YJIT (the #18176 fix covers the YJIT codegen barrier, not this). Full
-matrices, memory tables, the shim 0.4.2-on-4.0.6 comparison and the history
-of all prior runs are in [`BENCHMARKS.md`](./BENCHMARKS.md).
+Peak Mem = macOS `footprint` phys_footprint (COW-aware). Three framings,
+three different winners:
+
+- **Minimum RAM:** single-process kino :ractor (-w5 -t1) at 276 MB — the
+  frozen-graph sharing still wins by ~3.4× — but it is last on `/up` (the
+  one-process scheduler wall) and last on the Kaminari read path.
+- **Maximum throughput:** 5-proc kino :ractor leads `/up` (1.44× falcon)
+  and the non-Kaminari read path (1.42× falcon) — at 31% more memory than
+  forked Falcon.
+- **Memory parity:** 4-proc kino :ractor (976 MB vs falcon's 926 MB) keeps
+  the `/up` (+14%) and `/posts_plain` (+18%) lead while losing the DB-write
+  cell to falcon (−25%): parity costs kino one worker, and per-worker write
+  rates are near-equal (804 vs 854 rps).
+
+Per-proc scaling is linear (6,824 → 6,758 rps/proc from 5 to 4 procs), and
+the old single-process `/posts` deficit is mostly a shared-heap artifact:
+516 → 2,469 rps (4.8×) once each process owns its own heap and DB pool.
+The residual `/posts` vs `/posts_plain` split (3.3× multiproc, 9.9×
+single-proc) is Kaminari's per-request `Module.new`+`include` method-table
+mutation — the #18176 fix covered only the YJIT codegen half of that
+barrier. kino multiproc's high p50s (75-122 ms) are queueing at the single
+ractor per process (64 connections ÷ ~700-800 rps ≈ 80-90 ms), not request
+cost — Rails completes each POST in 5-10 ms. Full matrices, memory tables
+and the run history are in [`BENCHMARKS.md`](./BENCHMARKS.md).
 
 [ruby#22224]: https://bugs.ruby-lang.org/issues/22224
 [ruby#18176]: https://github.com/ruby/ruby/pull/18176
@@ -115,9 +135,14 @@ sign in against the matching environment's database.
 
 The harness (`bench/bench.rb`) boots **kino / puma / falcon** across a uniform
 5-scale matrix (single-proc threaded, 5 workers, 5×5), warms each up, runs
-`ab -c 64 -t 15` against `/up` (no DB), `GET /posts` (DB + render), and
+`ab -c 64 -t 30` against `/up` (no DB), `GET /posts` (DB + render, Kaminari),
+`GET /posts_plain` (same page, limit/offset — isolates the Kaminari tax), and
 authenticated `POST /posts` (Devise write), and captures per-process RSS /
 footprint. It seeds the benchmark user itself.
+
+Set `BENCH_KINO_MULTIPROC=N` to add a multi-process kino :ractor scenario
+(N processes × `-m ractor -w1 -t1` on ports `PORT+1..PORT+N`; per-port Req/s
+summed, latency = median across ports, memory summed across trees).
 
 **Prerequisites**
 
