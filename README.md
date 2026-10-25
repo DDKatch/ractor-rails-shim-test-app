@@ -224,7 +224,7 @@ are not loaded by Rails and are not required to run the app or benchmarks.
 |------|---------|
 | `kino.rb` | kino server configuration (worker/thread counts). Passed to kino via `-C kino.rb` from `config_ractor.ru`. Not a Rails file. |
 | `verify_blockers.rb` | Boots the app in `:ractor` mode and checks key endpoints (`/up` → 200, `Post.count`, Devise routes) as a quick smoke test that the shim works outside the test framework.
-| `load_root.rb` | Deliberate **load-test reproducer**. Hits a *running* server's `/` with configurable concurrency/duration to reproduce racor-worker connection errors the in-process Minitest cannot. Run against a live server (e.g. `kino -m ractor`); usage is printed in the file. |
+| `load_root.rb` | Deliberate **load-test reproducer**. Hits a *running* server's `/` with configurable concurrency/duration to reproduce ractor-worker connection errors the in-process Minitest cannot. Run against a live server (e.g. `kino -m ractor`); usage is printed in the file. |
 | `bench/repro.rb` | **Sustained write-path stress harness**. Signs in once, then hammers `POST /posts` with `ab` for `REPRO_ROUNDS` rounds (default 12), reporting rps per round. On Ruby 4.0.6 the class #2 frozen-iseq SIGBUS no longer occurs, so it runs clean (302s). Lives in `bench/` alongside the main harness. |
 
 ## License

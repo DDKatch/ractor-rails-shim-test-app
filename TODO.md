@@ -130,9 +130,10 @@ row, tick it here, note the evidence (test file / probe status).
     (qualified).
 24. **[DONE] Action Text (rows 120–121) — `has_rich_text :content` on Post
     (migration 20261006000007); write + sanitize + render verified in the
-    MAIN ractor (`test/controllers/rich_text_test.rb`). Worker-side render
-    probe still pending — expect the Nokogiri sanitizer wall (same class as
-    #50); if confirmed in the kino: matrix row gains a worker-side ⛔ note.
+    MAIN ractor (`test/controllers/rich_text_test.rb`). Worker-side probes
+    also done (2026-10-22): `update!(content:)` persists and renders back
+    through the kino worker (RAILS_FEATURES rows 120–121); sanitize stays
+    ⛔ in workers (Nokogiri wall, same class as #50).
 25. **[DONE] Action Cable in `:ractor` kino (rows 122–124) — `solid_cable`
     adopted (DB-backed, PG stack, no Redis); all envs point at the primary
     DB without `connects_to` (pool spec-name rationale in config/cable.yml).

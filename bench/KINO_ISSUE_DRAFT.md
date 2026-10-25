@@ -2,7 +2,19 @@
 
 > Not posted. Review before submitting.
 >
-> **Status update (2026-10-24), reread before posting:** the numbers below
+> **Status update (2026-10-25), reread before posting:** the YJIT half of
+> the issue below is RESOLVED upstream — Ruby 4.0.7 (2026-09-15) shipped
+> [ruby/ruby#18176](https://github.com/ruby/ruby/pull/18176) (bug #22224);
+> kino :ractor now runs YJIT-on at full speed (single-proc `-w5 -t1`:
+> 14,094 rps on the no-DB path, and multi-process 4 procs × w5-t1:
+> 58,122 rps — test-app `BENCHMARKS.md`). What still stands is the OTHER
+> half: the Kaminari per-request `Module.new`+`include` method-table
+> mutation stalls each process's whole ractor set (~2.1k rps invariant
+> across every kino topology, while its limit/offset twin scaled 8.7×).
+> Re-scope the draft to that before submitting — the original issue
+> numbers (Ruby 4.0.6, 3,136 rps, YJIT-off workaround) are historical.
+>
+> **Status update (2026-10-24):** the numbers below
 > are from Ruby 4.0.6. Ruby 4.0.7 (2026-09-15) shipped
 > [ruby/ruby#18176](https://github.com/ruby/ruby/pull/18176) — the fix for
 > YJIT taking the VM lock and stopping Ractors on method-cache invalidation

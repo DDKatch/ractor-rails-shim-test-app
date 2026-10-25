@@ -15,6 +15,22 @@ cd ractor-rails-shim-test-app && ruby bench/bench.rb
 # optionally: BENCH_DURATION=20 BENCH_CONCURRENCY=64
 ```
 
+## Where things stand (2026-10-25)
+
+**Latest results:** see *Re-run with multi-process kino :ractor (2026-10-25)*
+below. On official Ruby 4.0.7 (YJIT on — the YJIT/Ractor VM-lock fix landed,
+so no `BENCH_YJIT_OFF` workaround), shim 0.5.1, Rails 8.1.3.1: **kino :ractor
+multiproc (4 procs × w5-t1, 20 workers)** leads falcon forked on `/up`
+(**58,122 vs 21,276 rps, 2.73×**), the non-Kaminari read path (`/posts_plain`
+3.32×), and POST (3.03×), at +13% memory (1,045 vs 929 MB peak unique) — and
+wins every cell vs puma clustered. Single-process kino :ractor (-w5 -t1)
+remains the minimum-RAM winner (**255 MB**, ~3.6× below the forked servers),
+while the Kaminari read path (`GET /posts`, ~2.1k rps) is invariant across
+every kino topology — a VM-level method-table cost, not a topology one.
+The full per-scenario tables, latency percentiles, and the run history
+(July 4.0.6 headline → 0.4.2 → 4.0.7 → multiproc) are in the dated sections
+below; the July matrix is the historical baseline.
+
 ## Framings (uniform 5-scale matrix)
 
 - **A** (single process, 5 threads): `kino -m threaded -t5`, `puma -w0 -t5`,
@@ -608,7 +624,10 @@ file, and the 4-proc parity row from its dedicated run. Raw data:
 Same-day reproducibility (within-day variance ≈ 10%): puma clustered ran
 twice early and agreed within ~5% (/up 22,617 vs 22,438; POST 3,042 vs
 2,917); kino single-proc 15,754 vs 17,173; 5-proc multiproc 34,121 vs
-30,405. Cross-day caveat: today's runs wiped the posts table between
+30,405. The 4-proc × w5-t1 parity row was also re-run standalone after the
+full matrix and reproduced within noise (`bench/results/bench-20261025-214638.json`:
+/up 58,121.7 vs 58,122; /posts_plain 18,386.13 vs 18,386; POST 11,783.61 vs
+11,784). Cross-day caveat: today's runs wiped the posts table between
 scenarios (harness fix #5), while the 2026-10-24 matrices accumulated
 benchmark rows mid-run — so `/posts` cells are only comparable within a
 day.

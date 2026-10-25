@@ -81,7 +81,7 @@ workers, making it unreadable.
 
 ## P3: Update RAILS_FEATURES.md with actual test results
 
-**Status:** Not yet done. See below.
+**Status:** Resolved — RAILS_FEATURES.md has carried the actual test results since the 2026-10-13 update.
 
 ---
 
