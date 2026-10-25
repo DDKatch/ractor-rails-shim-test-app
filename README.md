@@ -32,10 +32,10 @@ comparable. Full matrices and the run history live in
 | Server | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Peak Mem (MB, unique) |
 |--------|-----------|------------------------|-------------------|-----------------------|
 | **kino :ractor multiproc (4 procs × w5-t1)** | **58,122** | **18,386** | **11,784** | 1,045 |
-| kino :ractor multiproc (4 procs × w1-t1) | 27,031 | 6,685 | 3,214 | 976 |
-| kino :ractor multiproc (5 procs × w1-t1) | 30,405 | 6,735 | 3,360 | 1,193 |
 | falcon forked (-n5) | 21,276 | 5,543 | 3,886 | 929 |
 | puma clustered (-w5 -t1) | 21,598 | 4,597 | 3,131 | 935 |
+| kino :ractor multiproc (5 procs × w1-t1) | 30,405 | 6,735 | 3,360 | 1,193 |
+| kino :ractor multiproc (4 procs × w1-t1) | 27,031 | 6,685 | 3,214 | 976 |
 | kino :ractor (-w5 -t1) | 17,173 | 4,296 | 2,987 | **255** |
 | puma clustered (-w5 -t5) | 20,458 | 4,994 | 3,510 | 966 |
 | falcon hybrid (-n5 --threads 5) | 16,483 | 4,628 | 3,042 | 971 |

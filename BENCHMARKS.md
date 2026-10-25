@@ -649,8 +649,8 @@ dedicated run:
 | puma clustered (-w5 -t5) | B | 20,458 | 2,976 | 4,994 | 3,510 | 3 / 5 / 7 | 21 / 29 / 54 | 12 / 19 / 23 | 14 / 41 / 48 |
 | falcon hybrid (-n5 --threads 5) | B | 16,483 | 2,707 | 4,628 | 3,042 | 3 / 9 / 13 | 23 / 36 / 46 | 13 / 22 / 27 | 13 / 54 / 80 |
 | **kino :ractor multiproc (4 procs × w5-t1)** | B | **58,122** | 2,120 | **18,386** | **11,784** | 4 / 6 / 9 | 115 / 168 / 194 | 14 / 17 / 22 | 20 / 26 / 40 |
-| kino :ractor multiproc (4 procs × w1-t1) | B | 27,031 | 2,079 | 6,685 | 3,214 | 9 / 11 / 15 | 117 / 163 / 213 | 37 / 46 / 58 | 75 / 97 / 142 |
 | kino :ractor multiproc (5 procs × w1-t1) | B | 30,405 | 2,328 | 6,735 | 3,360 | 10 / 12 / 16 | 129 / 172 / 200 | 44 / 56 / 86 | 90 / 124 / 185 |
+| kino :ractor multiproc (4 procs × w1-t1) | B | 27,031 | 2,079 | 6,685 | 3,214 | 9 / 11 / 15 | 117 / 163 / 213 | 37 / 46 / 58 | 75 / 97 / 142 |
 
 ### Memory (peak unique / footprint, MB)
 
@@ -666,8 +666,8 @@ dedicated run:
 | puma clustered (-w5 -t5) | B | 866 | 943 | 966 |
 | falcon hybrid (-n5 --threads 5) | B | 986 | 1,016 | 971 |
 | kino :ractor multiproc (4 procs × w5-t1) | B | 837 | 837 | 1,045 |
-| kino :ractor multiproc (4 procs × w1-t1) | B | 904 | 904 | 976 |
 | kino :ractor multiproc (5 procs × w1-t1) | B | 841 | 841 | 1,193 |
+| kino :ractor multiproc (4 procs × w1-t1) | B | 904 | 904 | 976 |
 
 ### What the multiproc run shows
 
