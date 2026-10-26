@@ -31,23 +31,23 @@ comparison (JRuby servers don't depend on the kino version). The previous
 kino 0.2.1 run (2026-10-25) and the full run history live in
 [`BENCHMARKS.md`](./BENCHMARKS.md).
 
-| Server | Run | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Peak Mem (MB, unique) |
-|--------|-----|-----------|------------------------|-------------------|-----------------------|
-| **kino :ractor multiproc (4 procs × w5-t1)** | 2026-10-26 (0.7.1) | **66,726** | **19,287** | **13,563** | 1,067 |
-| falcon forked (-n5) | 2026-10-26 (0.7.1) | 22,489 | 5,962 | 4,001 | 917 |
-| puma clustered (-w5 -t1) | 2026-10-26 (0.7.1) | 21,575 | 4,936 | 3,169 | 938 |
-| kino :ractor multiproc (5 procs × w1-t1) | 2026-10-26 (0.7.1) | 33,232 | 8,527 | 3,165 | 1,278 |
-| kino :ractor multiproc (4 procs × w1-t1) | 2026-10-26 (0.7.1) | 27,907 | 6,931 | 2,003 | 1,014 |
-| kino :ractor (-w5 -t1) | 2026-10-26 (0.7.1) | 16,252 | 4,306 | 3,270 | **263** |
-| puma clustered (-w5 -t5) | 2026-10-26 (0.7.1) | 20,575 | 4,148 | 2,281 | 967 |
-| falcon hybrid (-n5 --threads 5) | 2026-10-26 (0.7.1) | 17,272 | 4,315 | 3,750 | 963 |
-| kino :ractor (-w5 -t5) | 2026-10-26 (0.7.1) | 6,577 | 3,841 | 3,164 | 318 |
-| kino :threaded (-t5) | 2026-10-26 (0.7.1) | 6,328 | 1,429 | 1,282 | 205 |
-| puma single (-w0 -t5) | 2026-10-26 (0.7.1) | 5,535 | 1,554 | 1,100 | 199 |
-| falcon async (-n1) | 2026-10-26 (0.7.1) | 5,559 | 1,594 | 1,097 | 238 |
-| puma single (-w0 -t20), MRI | 2026-10-25 (JRuby run) | 5,431 | 1,605 | 1,023 | 198 |
-| jruby + puma single (-w0 -t40) | 2026-10-25 (JRuby run) | 4,513 | 2,070 | 1,162 | 1,227 |
-| jruby + puma single (-w0 -t20) | 2026-10-25 (JRuby run) | 3,596 | 1,281 | 909 | 1,246 |
+| Server | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Peak Mem (MB, unique) |
+|--------|-----------|------------------------|-------------------|-----------------------|
+| **kino :ractor multiproc (4 procs × w5-t1)** | **66,726** | **19,287** | **13,563** | 1,067 |
+| falcon forked (-n5) | 22,489 | 5,962 | 4,001 | 917 |
+| puma clustered (-w5 -t1) | 21,575 | 4,936 | 3,169 | 938 |
+| kino :ractor multiproc (5 procs × w1-t1) | 33,232 | 8,527 | 3,165 | 1,278 |
+| kino :ractor multiproc (4 procs × w1-t1) | 27,907 | 6,931 | 2,003 | 1,014 |
+| kino :ractor (-w5 -t1) | 16,252 | 4,306 | 3,270 | **263** |
+| puma clustered (-w5 -t5) | 20,575 | 4,148 | 2,281 | 967 |
+| falcon hybrid (-n5 --threads 5) | 17,272 | 4,315 | 3,750 | 963 |
+| kino :ractor (-w5 -t5) | 6,577 | 3,841 | 3,164 | 318 |
+| kino :threaded (-t5) | 6,328 | 1,429 | 1,282 | 205 |
+| puma single (-w0 -t5) | 5,535 | 1,554 | 1,100 | 199 |
+| falcon async (-n1) | 5,559 | 1,594 | 1,097 | 238 |
+| puma single (-w0 -t20), MRI | 5,431 | 1,605 | 1,023 | 198 |
+| jruby + puma single (-w0 -t40) | 4,513 | 2,070 | 1,162 | 1,227 |
+| jruby + puma single (-w0 -t20) | 3,596 | 1,281 | 909 | 1,246 |
 
 Peak Mem = macOS `footprint` phys_footprint (COW-aware). Three framings,
 three different winners:
