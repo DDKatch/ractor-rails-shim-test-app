@@ -195,6 +195,38 @@ if (mproc = ENV["BENCH_KINO_MULTIPROC"].to_i) > 0
   }
 end
 
+# JRuby comparison (the "Rails on JRuby = shared-memory parallelism" claim):
+# BENCH_JRUBY_THREADS=N runs ONE JRuby process with Puma -w0 -tN (real OS
+# threads, shared heap, JVM JIT — no GVL, no Ractors, no shim). Requires the
+# JRuby distribution on PATH or JRUBY_BIN, Gemfile.jruby + Gemfile.jruby.lock,
+# and DB_ADAPTER=jdbcpostgresql (database.yml routes the adapter through it).
+if (jth = ENV["BENCH_JRUBY_THREADS"].to_i) > 0
+  jruby_bin = ENV["JRUBY_BIN"] ||
+              File.expand_path("jruby-10.1.2.0/bin/jruby",
+                               ENV["JRUBY_HOME"] || File.join(Dir.home, "My_Space/Workspace/tools"))
+  SCENARIOS << {
+    name: "jruby + puma single (-w0 -t#{jth})",
+    framing: "A",
+    pgrep: "java",
+    cmd_builder: ->(port) {
+      [jruby_bin, "-S", "bundle", "exec", "puma", "config_jruby.ru", "-p", port.to_s]
+    },
+    env: COMMON_ENV.merge("SERVER" => "puma", "WEB_CONCURRENCY" => "0",
+                           "RAILS_MAX_THREADS" => jth.to_s,
+                           "DB_POOL" => (jth * 2).to_s,
+                           "BUNDLE_GEMFILE" => File.expand_path("../Gemfile.jruby", __dir__),
+                           # Serve the test DB (the harness's DATABASE_URL can't be
+                           # used under JRuby: the URL resolver would demand the C
+                           # `postgresql` adapter). database.yml routes the dev DB
+                           # name through BENCH_DB_NAME.
+                           "DATABASE_URL" => nil,
+                           "BENCH_DB_NAME" => "ractor_rails_shim_test_app_test",
+                           "PORT" => PORT.to_s,
+                           "JRUBY_OPTS" => (ENV["JRUBY_OPTS"] || "-J-Xmx1024m")),
+    wait_timeout: 90,
+  }
+end
+
 if (filter = ENV["BENCH_SCENARIO"])
   SCENARIOS.select! { |s| s[:name].downcase.include?(filter.downcase) }
   raise "no scenarios matched BENCH_SCENARIO=#{filter.inspect}" if SCENARIOS.empty?

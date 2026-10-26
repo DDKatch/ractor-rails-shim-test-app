@@ -33,22 +33,25 @@ matrices and the run history live in [`BENCHMARKS.md`](./BENCHMARKS.md).
 | Server | Run | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Peak Mem (MB, unique) |
 |--------|-----|-----------|------------------------|-------------------|-----------------------|
 | **kino :ractor multiproc (4 procs × w5-t1)** | 2026-10-25 (0.2.1) | **58,122** | **18,386** | **11,784** | 1,045 |
-| kino :ractor multiproc (5 procs × w1-t1) | 2026-10-25 (0.2.1) | 30,405 | 6,735 | 3,360 | 1,193 |
-| kino :ractor multiproc (4 procs × w1-t1) | 2026-10-25 (0.2.1) | 27,031 | 6,685 | 3,214 | 976 |
 | falcon forked (-n5) | 2026-10-25 (0.2.1) | 21,276 | 5,543 | 3,886 | 929 |
 | puma clustered (-w5 -t1) | 2026-10-25 (0.2.1) | 21,598 | 4,597 | 3,131 | 935 |
+| kino :ractor multiproc (5 procs × w1-t1) | 2026-10-25 (0.2.1) | 30,405 | 6,735 | 3,360 | 1,193 |
+| kino :ractor multiproc (4 procs × w1-t1) | 2026-10-25 (0.2.1) | 27,031 | 6,685 | 3,214 | 976 |
 | kino :ractor (-w5 -t1) | 2026-10-25 (0.2.1) | 17,173 | 4,296 | 2,987 | **255** |
 | puma clustered (-w5 -t5) | 2026-10-25 (0.2.1) | 20,458 | 4,994 | 3,510 | 966 |
 | falcon hybrid (-n5 --threads 5) | 2026-10-25 (0.2.1) | 16,483 | 4,628 | 3,042 | 971 |
 | kino :ractor (-w5 -t5) | 2026-10-25 (0.2.1) | 6,380 | 3,321 | 1,758 | 294 |
+| puma single (-w0 -t20), MRI | 2026-10-25 (JRuby run) | 5,431 | 1,605 | 1,023 | 198 |
+| jruby + puma single (-w0 -t40) | 2026-10-25 (JRuby run) | 4,513 | 2,070 | 1,162 | 1,227 |
 | kino :threaded (-t5) | 2026-10-25 (0.2.1) | 6,261 | 1,730 | 1,318 | 190 |
+| jruby + puma single (-w0 -t20) | 2026-10-25 (JRuby run) | 3,596 | 1,281 | 909 | 1,246 |
 | puma single (-w0 -t5) | 2026-10-25 (0.2.1) | 5,619 | 1,609 | 1,209 | 198 |
 | falcon async (-n1) | 2026-10-25 (0.2.1) | 5,571 | 1,528 | 1,106 | 232 |
 | **kino :ractor multiproc (4 procs × w5-t1)** | 2026-10-26 (0.7.1) | **66,726** | **19,287** | **13,563** | 1,067 |
-| kino :ractor multiproc (5 procs × w1-t1) | 2026-10-26 (0.7.1) | 33,232 | 8,527 | 3,165 | 1,278 |
-| kino :ractor multiproc (4 procs × w1-t1) | 2026-10-26 (0.7.1) | 27,907 | 6,931 | 2,003 | 1,014 |
 | falcon forked (-n5) | 2026-10-26 (0.7.1) | 22,489 | 5,962 | 4,001 | 917 |
 | puma clustered (-w5 -t1) | 2026-10-26 (0.7.1) | 21,575 | 4,936 | 3,169 | 938 |
+| kino :ractor multiproc (5 procs × w1-t1) | 2026-10-26 (0.7.1) | 33,232 | 8,527 | 3,165 | 1,278 |
+| kino :ractor multiproc (4 procs × w1-t1) | 2026-10-26 (0.7.1) | 27,907 | 6,931 | 2,003 | 1,014 |
 | kino :ractor (-w5 -t1) | 2026-10-26 (0.7.1) | 16,252 | 4,306 | 3,270 | **263** |
 | puma clustered (-w5 -t5) | 2026-10-26 (0.7.1) | 20,575 | 4,148 | 2,281 | 967 |
 | falcon hybrid (-n5 --threads 5) | 2026-10-26 (0.7.1) | 17,272 | 4,315 | 3,750 | 963 |
@@ -73,6 +76,15 @@ repeats the shape — see below):
   limit/offset twin scaled 8.7× — the per-request `Module.new`+`include`
   method-table mutation stalls each process's whole ractor set, so it is
   a VM cost, not a topology one.
+- **JRuby check (the Reddit counter-claim):** a single JVM process with
+  40 Puma threads matches or slightly beats single-process MRI on the
+  scalable read path — real parallelism, no GVL — but peaks at ~1.2 GB
+  unique vs 198 MB for the same single-process MRI topology, and the
+  `json` 3.1.0-java Coder is not thread-safe (every session-cookie
+  commit 500s under load without a synchronization workaround). The
+  kino frozen-graph shape is the same "shared memory, many workers" idea
+  at ~1/6 the footprint and 12-50× the per-worker throughput. Details in
+  [`BENCHMARKS.md`](./BENCHMARKS.md).
 
 Throughput scales linearly in total workers: per-ractor POST rate sits in
 the same ~590-800 rps band in every kino topology (597 at 5 ractors in one
@@ -184,7 +196,9 @@ Set `BENCH_KINO_MULTIPROC=N` to add a multi-process kino :ractor scenario
 (N processes × `-m ractor -w1 -t1` on ports `PORT+1..PORT+N`; per-port Req/s
 summed, latency = median across ports, memory summed across trees). Set
 `BENCH_KINO_MP_WORKERS=M` to change the per-process worker count (e.g. 4
-procs × w5 = 20 workers).
+procs × w5 = 20 workers). Set `BENCH_JRUBY_THREADS=N` to add the JRuby
+comparison (one JVM process, Puma `-w0 -tN`; needs the JRuby distribution,
+`Gemfile.jruby` + its lockfile, and `JRUBY_HOME`/`JRUBY_BIN`).
 
 **Prerequisites**
 

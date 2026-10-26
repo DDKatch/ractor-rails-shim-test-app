@@ -1,0 +1,35 @@
+source "https://rubygems.org"
+
+# JRuby-only Gemfile for the JRuby-vs-MRI benchmark comparison.
+#
+# Boot with:
+#   BUNDLE_GEMFILE=Gemfile.jruby jruby -S bundle exec puma config_jruby.ru -p 3230
+#
+# Differences from the MRI Gemfile (all C extensions or Ractor-specific):
+#   - ractor-rails-shim: YARV-only (no Ractors on JRuby)
+#   - pg (C ext) -> activerecord-jdbcpostgresql-adapter (JDBC driver)
+#   - kino, falcon: YARV fiber-scheduler servers; JRuby benchmark is Puma
+#     threaded (-w0 -tN) — exactly the topology the JRuby claim describes
+#     ("hundreds of concurrent requests in a single process")
+#   - tailwindcss-rails: platform-specific binary, assets are precompiled
+#   - bootsnap/thruster: C ext / MRI production helpers
+#   - debug/stackprof/selenium etc.: MRI dev/test tooling
+
+gem "audit_engine", path: "engines/audit_engine"
+
+gem "rails", "~> 8.1.3"
+gem "propshaft"
+gem "activerecord-jdbc-adapter", "81.0.pre1" # AR 8.1 support (sub-gems lag at 80.0.pre1)
+gem "jdbc-postgres", "~> 42.7"
+gem "puma", ">= 5.0"
+gem "devise", ">= 4.9"
+gem "kaminari", "~> 1.2"
+gem "image_processing", "~> 1.2"
+gem "msgpack", ">= 1.7.0"
+gem "solid_cache"
+gem "solid_queue"
+gem "solid_cable"
+gem "turbo-rails"
+
+gem "csv"
+gem "tzinfo-data"

@@ -782,6 +782,85 @@ ceiling: workers × pool must stay under `max_connections`. The kino 0.7.1
 re-run (2026-10-26) widens the lead: **2.97× / 3.24× / 3.39×** over falcon
 forked at +16% memory (1,067 vs 917 MB peak unique).
 
+## JRuby comparison — the Reddit claim, measured (2026-10-25)
+
+The Reddit thread "Bringing Rails into the Ractor age" produced the claim:
+*"you can do fully parallel shared memory concurrency in Rails today just
+by running on JRuby … hundreds of concurrent requests in a single process
+using way less memory than regular Ruby."* Measured here against the same
+app, same day, same load profile.
+
+Setup: JRuby 10.1.2.0 (Ruby 3.4/4.0.0 compat line; banner: OpenJDK 23.0.1
++indy +jit), Puma 8.0.2 single mode (`-w0 -tN`, N = 20 and 40), one JVM
+process, real OS threads, shared heap, no Ractors, no shim. Rails 8.1.4
+(minor bump from the matrix's 8.1.3.1; same app), `activerecord-jdbc-adapter
+81.0.pre1` (prerelease — the only AR 8.1-capable release, sub-gems lag at
+80.0.pre1), pool 2× threads, Postgres over JDBC 42.7.11.
+
+### Throughput / latency
+
+| Server | Req/s /up | p50/p95/p99 | GET /posts | GET /posts_plain | POST /posts |
+|--------|-----------|-------------|------------|------------------|-------------|
+| jruby + puma single (-w0 -t20) | 3,596 | 14 / 42 / 96 | 434 | 1,281 | — |
+| jruby + puma single (-w0 -t40) | 4,513 | 14 / 29 / 50 | 829 | **2,070** | 1,162 |
+| puma single, MRI 4.0.7 (-w0 -t20) | 5,431 | 12 / 18 / 21 | 892 | 892 | 1,023 |
+| kino :ractor multiproc 4×w5 (MRI) | 58,122 | 4 / 6 / 9 | 2,120 | 18,386 | 11,784 |
+
+### Memory (peak phys_footprint, MB)
+
+| Server | Peak RSS | Peak unique |
+|--------|----------|-------------|
+| jruby + puma single (-w0 -t20) | 937 | 1,166 |
+| jruby + puma single (-w0 -t40) | 1,275 | 1,227 |
+| puma single, MRI 4.0.7 (-w0 -t20) | 186 | 198 |
+| kino :ractor multiproc 4×w5 (MRI) | 837 | 1,045 |
+
+### What the JRuby run shows
+
+1. **It works end-to-end — after two fixes.** (a) Bundler resolves a dead
+   arjdbc 1.3.x line unless the core gem is pinned to `61.0.pre1`-lineage
+   prereleases; `81.0.pre1` (2026-09-29) is currently the only release that
+   loads on ActiveRecord 8.1. (b) See finding 2. After both, all four
+   paths return correct results including the authenticated POST dance.
+2. **Ecosystem landmine: `json` 3.1.0-java's `JSON::Coder#dump` is not
+   thread-safe.** Standalone repro, no Rails involved: 20 threads × 300
+   dumps of a flat 2-key hash → 20/20 threads hit
+   `JSON::NestingError ("nesting of 101 is too deep")`. The Coder API
+   reuses one frozen `GeneratorState` across threads and the Java
+   extension keeps mutating its depth counter. Every Rails
+   `cookies_serializer = :json` commit (the default — includes the
+   session cookie) 500s under concurrent load: an unpatched run logged
+   **10,439 500s** while our instrumented reads thought they were fine
+   (ab counts them as Non-2xx, not transport failures). Workaround:
+   synchronize the coder's dump per coder, or serialize cookies with
+   Marshal. MRI's json ext keeps per-call state and is unaffected.
+3. **Parallelism is real.** Unlike MRI's GVL-capped threads (t20 ≈ t5),
+   JRuby scales with thread count: t20 → t40 lifts `/up` 2,987 → 4,513
+   and the non-Kaminari read path 1,281 → 2,070, with the JVM using ~8
+   of 12 cores. At -t40 JRuby matches or slightly beats single-process
+   MRI on the scalable read path while LOSING `/up` (5,431 MRI).
+4. **The memory claim is inverted on this stack.** One JVM peaks at
+   1,166-1,227 MB unique — more than MRI's clustered topology (966 MB),
+   more than kino multiproc 4×w5 (1,045 MB), and ~5× kino single-proc
+   :ractor (-w5 -t1, 255 MB). The Reddit commenter's baseline ("regular
+   Ruby" forked processes) doesn't include the frozen-graph trick this
+   repo exists to exploit — with it, MRI holds BOTH the memory win and a
+   12-50× throughput win per worker.
+5. **Per-request cost is the gap.** JRuby raw-loop JIT ≈ YJIT (20M
+   iterations: 0.318s vs 0.321s), but the Rails request machinery costs
+   ~5× more CPU per request on JRuby here (~110-220 rps/thread vs
+   MRI's ~680-2,900/ractor equivalents). Warmup was generous (30s +
+   ~90s of load before the POST phase) — the gap is structural, not
+   JIT-settling noise.
+
+**JRuby bottom line:** single-JVM Rails on JRuby 10.1.2 + arjdbc 61.0.pre1
+lineage delivers true intra-process parallelism today, at a memory premium
+that inverts the Reddit claim for this workload (1.2 GB vs 255 MB-1.2 GB for
+the MRI alternatives it claims to beat). It is also one unpatched dependency
+away from 500ing every session write under load. The kino :ractor topology
+gives the same shared-memory shape — one process, many workers, ~200 MB —
+with YJIT dispatch costs.
+
 ## Memory columns
 
 "RSS sum" = sum of `ps` RSS across the whole server process tree (listeners +
