@@ -11,7 +11,7 @@ blocker map and the per-concern patch inventory, and
 [`BENCHMARKS.md`](./BENCHMARKS.md) for the full kino `:ractor` vs Puma vs
 Falcon benchmark analysis.
 
-## Latest benchmark — multi-process kino :ractor vs best Puma/Falcon, ractor-rails-shim 0.5.1, Ruby 4.0.7 (kino 0.2.1 on 2026-10-25 · kino 0.7.1 on 2026-10-26)
+## Latest benchmark — multi-process kino :ractor vs best Puma/Falcon, ractor-rails-shim 0.5.1, Ruby 4.0.7, kino 0.7.1 (2026-10-26)
 
 YJIT **on** for all servers (Rails 8.1 production default), official
 Ruby 4.0.7, Rails 8.1.3.1, `ab -c 64 -t 30 -k`, 12 cores. Ruby 4.0.7 ships
@@ -23,30 +23,16 @@ New in this run: **multi-process kino :ractor** — `BENCH_KINO_MULTIPROC=N`
 launches N independent kino processes, each `-m ractor -w1 -t1` (per-process
 fiber scheduler + frozen graph + DB pool). Req/s are summed across ports;
 latency is the median across ports; memory is summed across all N trees.
-Each row carries its **`Run` date** (and kino version): **2026-10-25 =
-kino 0.2.1**, **2026-10-26 = kino 0.7.1 (PR #22)**. Each run is one harness
-invocation for the 9 standard scenarios plus dedicated multiproc runs,
-against a clean DB (posts wiped between scenarios) — rows within a run are
-directly comparable, and bold marks the best value within a run. Full
-matrices and the run history live in [`BENCHMARKS.md`](./BENCHMARKS.md).
+All kino/puma/falcon rows below are one harness invocation on kino **0.7.1**
+(2026-10-26): the 9 standard scenarios plus dedicated multiproc runs, against
+a clean DB (posts wiped between scenarios) — directly comparable, and bold
+marks the best value. The three JRuby rows are from the 2026-10-25 JRuby
+comparison (JRuby servers don't depend on the kino version). The previous
+kino 0.2.1 run (2026-10-25) and the full run history live in
+[`BENCHMARKS.md`](./BENCHMARKS.md).
 
 | Server | Run | /up (rps) | GET /posts_plain (rps) | POST /posts (rps) | Peak Mem (MB, unique) |
 |--------|-----|-----------|------------------------|-------------------|-----------------------|
-| **kino :ractor multiproc (4 procs × w5-t1)** | 2026-10-25 (0.2.1) | **58,122** | **18,386** | **11,784** | 1,045 |
-| falcon forked (-n5) | 2026-10-25 (0.2.1) | 21,276 | 5,543 | 3,886 | 929 |
-| puma clustered (-w5 -t1) | 2026-10-25 (0.2.1) | 21,598 | 4,597 | 3,131 | 935 |
-| kino :ractor multiproc (5 procs × w1-t1) | 2026-10-25 (0.2.1) | 30,405 | 6,735 | 3,360 | 1,193 |
-| kino :ractor multiproc (4 procs × w1-t1) | 2026-10-25 (0.2.1) | 27,031 | 6,685 | 3,214 | 976 |
-| kino :ractor (-w5 -t1) | 2026-10-25 (0.2.1) | 17,173 | 4,296 | 2,987 | **255** |
-| puma clustered (-w5 -t5) | 2026-10-25 (0.2.1) | 20,458 | 4,994 | 3,510 | 966 |
-| falcon hybrid (-n5 --threads 5) | 2026-10-25 (0.2.1) | 16,483 | 4,628 | 3,042 | 971 |
-| kino :ractor (-w5 -t5) | 2026-10-25 (0.2.1) | 6,380 | 3,321 | 1,758 | 294 |
-| puma single (-w0 -t20), MRI | 2026-10-25 (JRuby run) | 5,431 | 1,605 | 1,023 | 198 |
-| jruby + puma single (-w0 -t40) | 2026-10-25 (JRuby run) | 4,513 | 2,070 | 1,162 | 1,227 |
-| kino :threaded (-t5) | 2026-10-25 (0.2.1) | 6,261 | 1,730 | 1,318 | 190 |
-| jruby + puma single (-w0 -t20) | 2026-10-25 (JRuby run) | 3,596 | 1,281 | 909 | 1,246 |
-| puma single (-w0 -t5) | 2026-10-25 (0.2.1) | 5,619 | 1,609 | 1,209 | 198 |
-| falcon async (-n1) | 2026-10-25 (0.2.1) | 5,571 | 1,528 | 1,106 | 232 |
 | **kino :ractor multiproc (4 procs × w5-t1)** | 2026-10-26 (0.7.1) | **66,726** | **19,287** | **13,563** | 1,067 |
 | falcon forked (-n5) | 2026-10-26 (0.7.1) | 22,489 | 5,962 | 4,001 | 917 |
 | puma clustered (-w5 -t1) | 2026-10-26 (0.7.1) | 21,575 | 4,936 | 3,169 | 938 |
@@ -59,20 +45,22 @@ matrices and the run history live in [`BENCHMARKS.md`](./BENCHMARKS.md).
 | kino :threaded (-t5) | 2026-10-26 (0.7.1) | 6,328 | 1,429 | 1,282 | 205 |
 | puma single (-w0 -t5) | 2026-10-26 (0.7.1) | 5,535 | 1,554 | 1,100 | 199 |
 | falcon async (-n1) | 2026-10-26 (0.7.1) | 5,559 | 1,594 | 1,097 | 238 |
+| puma single (-w0 -t20), MRI | 2026-10-25 (JRuby run) | 5,431 | 1,605 | 1,023 | 198 |
+| jruby + puma single (-w0 -t40) | 2026-10-25 (JRuby run) | 4,513 | 2,070 | 1,162 | 1,227 |
+| jruby + puma single (-w0 -t20) | 2026-10-25 (JRuby run) | 3,596 | 1,281 | 909 | 1,246 |
 
 Peak Mem = macOS `footprint` phys_footprint (COW-aware). Three framings,
-three different winners (2026-10-25 kino 0.2.1 run; the kino 0.7.1 run
-repeats the shape — see below):
+three different winners:
 
-- **Minimum RAM:** single-process kino :ractor (-w5 -t1) at 255 MB — the
-  frozen-graph sharing still wins by ~3.6× — but it is well behind on
+- **Minimum RAM:** single-process kino :ractor (-w5 -t1) at 263 MB — the
+  frozen-graph sharing still wins by ~3.5× — but it is well behind on
   `/up` (the one-process scheduler wall) and last on the Kaminari read
   path.
 - **Maximum throughput:** 4 procs × 5 ractors (20 workers) leads `/up`
-  (2.73× falcon), the non-Kaminari read path (3.32× falcon), and the
-  write path (3.03× falcon) — at +13% memory vs forked Falcon.
+  (2.97× falcon), the non-Kaminari read path (3.24× falcon), and the
+  write path (3.39× falcon) — at +16% memory vs forked Falcon.
 - **The one remaining loss:** the Kaminari read path (`GET /posts`) is
-  invariant at ~2.1k rps across every kino topology while its
+  invariant at ~2.0-2.3k rps across every kino topology while its
   limit/offset twin scaled 8.7× — the per-request `Module.new`+`include`
   method-table mutation stalls each process's whole ractor set, so it is
   a VM cost, not a topology one.
@@ -87,11 +75,11 @@ repeats the shape — see below):
   [`BENCHMARKS.md`](./BENCHMARKS.md).
 
 Throughput scales linearly in total workers: per-ractor POST rate sits in
-the same ~590-800 rps band in every kino topology (597 at 5 ractors in one
-process → 589 at 20 ractors in four), while packing ractors per process
-trades per-ractor `/up` headroom (~6,800 isolated vs ~3,400 shared) for
+the same ~500-680 rps band in every kino topology (654 at 5 ractors in one
+process → 678 at 20 ractors in four), while packing ractors per process
+trades per-ractor `/up` headroom (~6,650 isolated vs ~3,250 shared) for
 worker count. The old single-process `/posts` deficit was the shared heap
-(527 → ~2.1-2.5k with processes), not an inherent Ractor cost. kino
+(505 → ~2.0-2.3k with processes), not an inherent Ractor cost. kino
 multiproc's p50s are queueing at the ractor-per-worker boundary (64
 connections ÷ per-proc rate ≈ 22-95 ms), not request cost — Rails
 completes each POST in 5-10 ms. Connection ceiling: 4 procs × 5 ractors ×
@@ -99,17 +87,13 @@ pool 5 = 100 = `max_connections`; smaller pools measured faster. Full
 matrices, memory tables and the run history are in
 [`BENCHMARKS.md`](./BENCHMARKS.md).
 
-**kino 0.7.1 re-run (2026-10-26, PR #22):** same protocol, and the packed
-multiproc topology gains another ~15% — 4 procs × w5-t1 reaches **66,726
-rps on `/up` (2.97× falcon forked), 19,287 on `/posts_plain` (3.24×), and
-13,563 POST (3.39×)** at 1,067 MB peak unique (+16% vs falcon forked's
-917 MB), winning every cell vs puma clustered. 5 procs × w1-t1 gains ~9%
-(33,232 vs 30,405). The single-proc kino topologies and the non-kino
-servers re-measured within ~5% of the 0.2.1 run, so the bump is
-kino-side, not machine-side (one puma clustered outlier at 15,645 was
-re-run at 21,575 and the tables take the re-run). The Kaminari path stays
-invariant (~2.0-2.3k rps in every kino topology) and the minimum-RAM
-winner is still single-process kino :ractor (-w5 -t1) at 263 MB.
+Versus the kino 0.2.1 run (2026-10-25, full tables in
+[`BENCHMARKS.md`](./BENCHMARKS.md)): 0.7.1 lifts the packed multiproc
+topology another ~15% — 58,122 → 66,726 on `/up` (2.73× → 2.97× falcon
+forked), 11,784 → 13,563 POST, 18,386 → 19,287 `/posts_plain` — while the
+single-proc kino topologies and the non-kino servers re-measured within
+~5%, so the bump is kino-side, not machine-side. (One puma clustered
+outlier at 15,645 was re-run at 21,575 and the tables take the re-run.)
 
 [ruby#22224]: https://bugs.ruby-lang.org/issues/22224
 [ruby#18176]: https://github.com/ruby/ruby/pull/18176
