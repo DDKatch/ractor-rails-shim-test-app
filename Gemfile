@@ -20,7 +20,7 @@ gem "falcon"
 # `gem "kino"` would happily pull a future 0.3 with breaking API changes.
 gem "kino", "~> 0.7.1"
 gem "devise", ">= 4.9"
-gem "kaminari", "~> 1.2"
+gem "kaminari", "~> 1.3"
 # ActiveStorage variant generation needs image_processing; without it Rails
 # warns on every boot ("Generating image variants require the image_processing
 # gem"). The app attaches avatars, so keep the transformer available.
