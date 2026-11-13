@@ -24,7 +24,10 @@ gem "kaminari", "~> 1.3"
 # ActiveStorage variant generation needs image_processing; without it Rails
 # warns on every boot ("Generating image variants require the image_processing
 # gem"). The app attaches avatars, so keep the transformer available.
-gem "image_processing", "~> 1.2"
+# image_processing 2.x no longer bundles MiniMagick: the mini_magick gem must
+# be declared explicitly (Gemfile requirement of ImageProcessing::MiniMagick).
+gem "image_processing", "~> 2.2"
+gem "mini_magick", "~> 5.4"
 gem "tzinfo-data", platforms: %i[ windows jruby ]
 gem "msgpack", ">= 1.7.0"
 # csv left the stdlib in Ruby 3.4 — the report mailer + downloads CSV need it.
