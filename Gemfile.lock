@@ -1,9 +1,9 @@
 GIT
   remote: https://github.com/DDKatch/ractor-rails-shim.git
-  revision: a994c46a00d20a42efb570f7854025e7d47a43b8
+  revision: 9baa1f141d44c2035566bb4a179810816c656e22
   branch: main
   specs:
-    ractor-rails-shim (0.6.0)
+    ractor-rails-shim (0.6.1)
       activesupport (>= 8.1)
 
 PATH
@@ -617,7 +617,7 @@ CHECKSUMS
   rack-session (2.1.2) sha256=595434f8c0c3473ae7d7ac56ecda6cc6dfd9d37c0b2b5255330aa1576967ffe8
   rack-test (2.3.0) sha256=b118d177cc002c572fc1b6fd8d19c9ed5881a36e8d6f689f9e618f9f861241e8
   rackup (2.3.1) sha256=6c79c26753778e90983761d677a48937ee3192b3ffef6bc963c0950f94688868
-  ractor-rails-shim (0.6.0)
+  ractor-rails-shim (0.6.1)
   rails (8.1.4.1) sha256=365c3a0ad2713bd6e60628e5e826622d4ca8dee60b5a7e560e9b20844e9650bc
   rails-dom-testing (2.3.0) sha256=8acc7953a7b911ca44588bf08737bc16719f431a1cc3091a292bca7317925c1d
   rails-html-sanitizer (1.7.2) sha256=a21ef45b7a6639fc8e2282473c547514cb86ae271616162a946bf89148fa2424
