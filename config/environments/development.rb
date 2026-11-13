@@ -46,6 +46,9 @@ Rails.application.configure do
   # Suppress logger output for asset requests.
   config.assets.quiet = true
 
+  # Local Disk service for dev (mirrors production's test_public Disk layout).
+  config.active_storage.service = :test_public
+
   # Raises error for missing translations.
   # config.i18n.raise_on_missing_translations = true
 
